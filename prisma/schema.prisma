@@ -1,0 +1,305 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Announcement {
+  id          String             @id
+  createdById String
+  title       String
+  body        String
+  target      AnnouncementTarget @default(ALL)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime
+  User        User               @relation(fields: [createdById], references: [id])
+
+  @@index([createdAt])
+  @@index([target])
+}
+
+model AuditLog {
+  id         String   @id
+  actorId    String
+  action     String
+  targetType String?
+  targetId   String?
+  createdAt  DateTime @default(now())
+  User       User     @relation(fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([createdAt])
+  @@index([targetType, targetId])
+}
+
+model Invite {
+  id                            String       @id
+  email                         String
+  token                         String       @unique
+  invitedById                   String
+  studentId                     String?      @unique
+  status                        InviteStatus @default(PENDING)
+  expiresAt                     DateTime
+  createdAt                     DateTime     @default(now())
+  acceptedAt                    DateTime?
+  User_Invite_invitedByIdToUser User         @relation("Invite_invitedByIdToUser", fields: [invitedById], references: [id])
+  User_Invite_studentIdToUser   User?        @relation("Invite_studentIdToUser", fields: [studentId], references: [id])
+}
+
+model Notification {
+  id        String           @id
+  userId    String
+  message   String
+  type      NotificationType
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  User      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
+
+model Progress {
+  id               String   @id
+  studentId        String
+  topicId          String
+  lessonViewed     Boolean  @default(false)
+  recordingWatched Boolean  @default(false)
+  quizCompleted    Boolean  @default(false)
+  updatedAt        DateTime
+  User             User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  Topic            Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, topicId])
+  @@index([studentId])
+  @@index([topicId])
+}
+
+model Question {
+  id             String           @id
+  quizId         String
+  prompt         String
+  type           QuestionType     @default(MULTIPLE_CHOICE)
+  marks          Int              @default(1)
+  orderIndex     Int
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime
+  Quiz           Quiz             @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  QuestionOption QuestionOption[]
+  StudentAnswer  StudentAnswer[]
+
+  @@unique([quizId, orderIndex])
+  @@index([quizId])
+}
+
+model QuestionOption {
+  id         String   @id
+  questionId String
+  text       String
+  isCorrect  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  Question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+model Quiz {
+  id               String        @id
+  topicId          String
+  title            String
+  timeLimitSeconds Int?
+  isActive         Boolean       @default(true)
+  createdById      String
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime
+  Question         Question[]
+  User             User          @relation(fields: [createdById], references: [id])
+  Topic            Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  QuizAttempt      QuizAttempt[]
+
+  @@index([isActive])
+  @@index([topicId])
+}
+
+model QuizAttempt {
+  id            String          @id
+  quizId        String
+  studentId     String
+  startedAt     DateTime        @default(now())
+  submittedAt   DateTime?
+  score         Int?
+  maxScore      Int?
+  Quiz          Quiz            @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  User          User            @relation(fields: [studentId], references: [id])
+  StudentAnswer StudentAnswer[]
+
+  @@unique([quizId, studentId])
+  @@index([quizId])
+  @@index([studentId])
+}
+
+model Recording {
+  id              String    @id
+  topicId         String
+  title           String
+  description     String?
+  streamVideoId   String    @unique
+  durationSeconds Int?
+  recordedDate    DateTime?
+  uploadedById    String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime
+  Topic           Topic     @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  User            User      @relation(fields: [uploadedById], references: [id])
+
+  @@index([topicId])
+}
+
+model Resource {
+  id           String       @id
+  topicId      String
+  type         ResourceType
+  title        String
+  description  String?
+  fileKey      String
+  fileType     String
+  fileSize     Int
+  uploadedById String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime
+  Topic        Topic        @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  User         User         @relation(fields: [uploadedById], references: [id])
+
+  @@index([topicId])
+  @@index([type])
+}
+
+model StudentAnswer {
+  id               String      @id
+  attemptId        String
+  questionId       String
+  selectedOptionId String?
+  textAnswer       String?
+  isCorrect        Boolean?
+  marksAwarded     Int?
+  createdAt        DateTime    @default(now())
+  QuizAttempt      QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  Question         Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId])
+  @@index([questionId])
+}
+
+model Subject {
+  id        String   @id
+  name      String   @unique
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  Unit      Unit[]
+}
+
+model Topic {
+  id         String      @id
+  unitId     String
+  name       String
+  orderIndex Int
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime
+  Progress   Progress[]
+  Quiz       Quiz[]
+  Recording  Recording[]
+  Resource   Resource[]
+  Unit       Unit        @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([unitId, orderIndex])
+  @@index([unitId])
+}
+
+model Unit {
+  id         String   @id
+  subjectId  String
+  name       String
+  orderIndex Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime
+  Topic      Topic[]
+  Subject    Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, orderIndex])
+  @@index([subjectId])
+}
+
+model User {
+  id                              String         @id
+  email                           String         @unique
+  passwordHash                    String
+  role                            Role           @default(STUDENT)
+  name                            String?
+  emailVerifiedAt                 DateTime?
+  createdAt                       DateTime       @default(now())
+  updatedAt                       DateTime
+  emailVerifyToken                String?        @unique
+  emailVerifyExpires              DateTime?
+  passwordResetToken              String?        @unique
+  passwordResetExpires            DateTime?
+  studentId                       String?        @unique
+  accountStatus                   AccountStatus  @default(ACTIVE)
+  Announcement                    Announcement[]
+  AuditLog                        AuditLog[]
+  Invite_Invite_invitedByIdToUser Invite[]       @relation("Invite_invitedByIdToUser")
+  Invite_Invite_studentIdToUser   Invite?        @relation("Invite_studentIdToUser")
+  Notification                    Notification[]
+  Progress                        Progress[]
+  Quiz                            Quiz[]
+  QuizAttempt                     QuizAttempt[]
+  Recording                       Recording[]
+  Resource                        Resource[]
+
+  @@index([role, studentId])
+}
+
+enum AccountStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum AnnouncementTarget {
+  ALL
+  BIOLOGY
+  CHEMISTRY
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
+
+enum NotificationType {
+  NEW_CONTENT
+  QUIZ_RESULT
+  ANNOUNCEMENT
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  SHORT_ANSWER
+  ESSAY
+}
+
+enum ResourceType {
+  LESSON
+  NOTE
+  WORKSHEET
+  SAVE_MY_EXAM
+  RESOURCE
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+}

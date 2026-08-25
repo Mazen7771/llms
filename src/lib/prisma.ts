@@ -7,9 +7,25 @@ const globalForPrisma = globalThis as unknown as {
   pool: Pool | undefined;
 };
 
+const isProduction = process.env.NODE_ENV === "production";
+
 const pool =
   globalForPrisma.pool ??
-  new Pool({ connectionString: process.env.DATABASE_URL });
+  new Pool({
+    connectionString: process.env.DATABASE_URL,
+    // Critical for serverless/Neon pooler
+    max: 1,
+    idleTimeoutMillis: 10_000,
+    maxUses: 7_500,
+    connectionTimeoutMillis: 5_000,
+    // SSL required for Neon in production
+    ssl: isProduction ? { rejectUnauthorized: false } : false,
+  });
+
+// Handle pool errors gracefully
+pool.on("error", (err) => {
+  console.error("Unexpected pg pool error:", err);
+});
 
 const adapter = new PrismaPg(pool);
 
@@ -17,10 +33,10 @@ export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
     adapter,
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+    log: isProduction ? ["error"] : ["query", "error", "warn"],
   });
 
-if (process.env.NODE_ENV !== "production") {
+if (!isProduction) {
   globalForPrisma.prisma = prisma;
   globalForPrisma.pool = pool;
 }

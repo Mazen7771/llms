@@ -1,15 +1,19 @@
 import NextAuth, { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { Role, AccountStatus } from "@/generated/prisma/client";
+import { env, isEnvValid, validateEnvAtRuntime } from "@/lib/env";
+
+// Validate environment at runtime (not build time)
+validateEnvAtRuntime();
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma) as NextAuthOptions["adapter"],
+  // Removed PrismaAdapter - using JWT-only sessions with singleton prisma
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 2 * 60 * 60, // 2 hours (reduced from 30 days for security)
+    updateAge: 30 * 60, // 30 minutes - sliding expiration
   },
   pages: {
     signIn: "/login/student",

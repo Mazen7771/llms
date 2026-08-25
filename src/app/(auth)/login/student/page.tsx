@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, Suspense } from "react";
+import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { PremiumButton } from "@/components/ui/PremiumButton";
 import { PremiumInput } from "@/components/ui/PremiumInput";
@@ -90,16 +91,15 @@ function StudentLoginPageContent() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/auth/student/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId: studentId.trim(), password }),
+      const result = await signIn("student", {
+        studentId: studentId.trim(),
+        password,
+        redirect: false,
+        callbackUrl,
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || "Login failed. Please check your credentials.");
+      if (result?.error) {
+        setError(result.error);
         return;
       }
 

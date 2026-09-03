@@ -1,71 +1,99 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
-
-// Server-side route protection. Runs on the Edge runtime before any page
-// renders, so unauthenticated or wrong-role users get a real redirect
-// instead of the previous client-side "blank page" that only returned null.
-//
-// The JWT is self-contained (NextAuth JWT strategy), so we can read the
-// role straight from the token without a database round-trip.
-
-const ADMIN_PREFIX = "/admin";
-const DASHBOARD_PREFIX = "/dashboard";
+import type { NextRequest } from "next/server";
 
 export async function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  const { nextUrl } = req;
+  const isLoggedIn = !!token;
+  const role = token?.role;
+  const isStudent = role === "STUDENT";
+  const isTeacher = role === "TEACHER";
 
-  // Skip non-page requests (API, static assets, images) for performance.
-  // API routes enforce their own auth server-side.
-  if (
-    pathname.startsWith("/api") ||
-    pathname.startsWith("/_next") ||
-    pathname.includes("/.") ||
-    pathname === "/favicon.ico"
-  ) {
+  // Public paths that don't require authentication
+  const publicPaths = ["/", "/login", "/login/student", "/login/teacher", "/api/auth", "/api/health"];
+
+  // Check if the path is public
+  const isPublicPath = publicPaths.some(path =>
+    nextUrl.pathname === path || nextUrl.pathname.startsWith(path + "/")
+  );
+
+  // Allow public paths
+  if (isPublicPath) {
     return NextResponse.next();
   }
 
-  const token = await getToken({
-    req,
-    secret: process.env.NEXTAUTH_SECRET,
-  });
-
-  const isAdminRoute = pathname === ADMIN_PREFIX || pathname.startsWith(`${ADMIN_PREFIX}/`);
-  const isDashboardRoute =
-    pathname === DASHBOARD_PREFIX || pathname.startsWith(`${DASHBOARD_PREFIX}/`);
-
-  // Public routes
-  if (!isAdminRoute && !isDashboardRoute) {
+  // Dashboard routes - require STUDENT role
+  if (nextUrl.pathname.startsWith("/dashboard")) {
+    if (!isLoggedIn) {
+      const callbackUrl = encodeURIComponent(nextUrl.pathname + nextUrl.search);
+      return NextResponse.redirect(new URL(`/login/student?callbackUrl=${callbackUrl}`, nextUrl));
+    }
+    if (!isStudent) {
+      // Teacher trying to access student dashboard - redirect to admin
+      return NextResponse.redirect(new URL("/admin", nextUrl));
+    }
     return NextResponse.next();
   }
 
-  // Unauthenticated -> send to login
-  if (!token) {
-    const loginUrl = req.nextUrl.clone();
-    loginUrl.pathname = isAdminRoute ? "/login/teacher" : "/login/student";
-    loginUrl.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(loginUrl);
+  // Admin routes - require TEACHER role
+  if (nextUrl.pathname.startsWith("/admin")) {
+    if (!isLoggedIn) {
+      const callbackUrl = encodeURIComponent(nextUrl.pathname + nextUrl.search);
+      return NextResponse.redirect(new URL(`/login/teacher?callbackUrl=${callbackUrl}`, nextUrl));
+    }
+    if (!isTeacher) {
+      // Student trying to access admin - redirect to dashboard
+      return NextResponse.redirect(new URL("/dashboard", nextUrl));
+    }
+    return NextResponse.next();
   }
 
-  // Authenticated but wrong role -> bounce to the right area
-  const role = token.role as string | undefined;
-  if (isAdminRoute && role !== "TEACHER") {
-    const url = req.nextUrl.clone();
-    url.pathname = "/dashboard";
-    url.search = "";
-    return NextResponse.redirect(url);
+  // Quiz routes - require STUDENT role
+  if (nextUrl.pathname.startsWith("/quiz")) {
+    if (!isLoggedIn) {
+      const callbackUrl = encodeURIComponent(nextUrl.pathname + nextUrl.search);
+      return NextResponse.redirect(new URL(`/login/student?callbackUrl=${callbackUrl}`, nextUrl));
+    }
+    if (!isStudent) {
+      return NextResponse.redirect(new URL("/dashboard", nextUrl));
+    }
+    return NextResponse.next();
   }
-  if (isDashboardRoute && role === "TEACHER") {
-    const url = req.nextUrl.clone();
-    url.pathname = "/admin";
-    url.search = "";
-    return NextResponse.redirect(url);
+
+  // API routes protection
+  if (nextUrl.pathname.startsWith("/api/student")) {
+    if (!isLoggedIn || !isStudent) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
+
+  if (nextUrl.pathname.startsWith("/api/admin")) {
+    if (!isLoggedIn || !isTeacher) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
+
+  // Default: allow if logged in, redirect to login if not
+  if (!isLoggedIn) {
+    const callbackUrl = encodeURIComponent(nextUrl.pathname + nextUrl.search);
+    return NextResponse.redirect(new URL(`/login/student?callbackUrl=${callbackUrl}`, nextUrl));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public folder
+     */
+    "/((?!_next/static|_next/image|favicon.ico|public/).*)",
+  ],
 };

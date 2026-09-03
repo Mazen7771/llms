@@ -1,0 +1,62 @@
+[
+  {
+    "file": "src/app/api/admin/recordings/route.ts",
+    "line": 87,
+    "summary": "Check-then-act race condition on unique streamVideoId field in PATCH handler",
+    "failure_scenario": "Two concurrent PATCH requests for different recordings both try to set streamVideoId: 'abc123' → both pass findUnique check → both succeed → duplicate streamVideoId violates DB unique constraint or P2002 error becomes unhandled 500"
+  },
+  {
+    "file": "src/app/api/admin/recordings/route.ts",
+    "line": 92,
+    "summary": "Missing existence check returns 500 instead of 404 - Prisma update/delete throws P2025 which bubbles to catch",
+    "failure_scenario": "Teacher clicks delete on already-deleted recording → sees 'Failed to delete recording' (500) instead of 'Recording not found' (404). Affects all 5 new PATCH/DELETE endpoints across recordings, resources, subjects, topics, units"
+  },
+  {
+    "file": "src/app/admin/students/page.tsx",
+    "line": 213,
+    "summary": "UI passes displayId (derived from email) to PATCH API but API expects database studentId field",
+    "failure_scenario": "Student created without studentId (nullable in schema) has displayId='001' extracted from email 'student001@lms.local' but API does findUnique({ studentId: '001' }) which won't match null studentId → 404 'Student not found' despite student existing. Works for seeded students but breaks for edge cases"
+  },
+  {
+    "file": "src/app/api/admin/students/route.ts",
+    "line": 123,
+    "summary": "PATCH uses studentId (nullable business key) instead of id (UUID) for lookup, inconsistent with other admin APIs",
+    "failure_scenario": "Frontend passes displayId which equals studentId for seeded accounts but falls back to email parsing for null studentId. If student has null studentId, API lookup fails with 404. Other admin APIs consistently use UUID id field"
+  },
+  {
+    "file": "src/lib/auth.ts",
+    "line": 38,
+    "summary": "requireTeacher() and requireStudent() helpers exist but are unused in all 6 admin API routes and student API routes",
+    "failure_scenario": "~48 lines of identical auth boilerplate duplicated across 6 files (12 handlers). Any auth logic change (new role, error format, logging) requires updating all files. Middleware already protects routes but inline checks diverge from centralized pattern"
+  },
+  {
+    "file": "src/app/api/admin/recordings/route.ts",
+    "line": 73,
+    "summary": "Massive copy-paste CRUD boilerplate across 6 admin API routes (recordings, resources, subjects, topics, units, students)",
+    "failure_scenario": "Each route reimplements PATCH/DELETE with identical session check, error handling, Prisma patterns (~600 lines total). Bug fixes, audit logging, or auth changes must be applied to 6 files. New admin entity requires copying 100+ lines"
+  },
+  {
+    "file": "src/app/admin/layout.tsx",
+    "line": 55,
+    "summary": "Fallback 'Redirecting...' UI doesn't actually redirect - removed useEffect with router.push, relies entirely on middleware",
+    "failure_scenario": "Middleware misses a path (e.g., new route not in matcher) OR client-side navigation bypasses middleware → user sees 'Redirecting...' indefinitely with no actual navigation. Page becomes stuck. Same issue in dashboard/layout.tsx:74"
+  },
+  {
+    "file": "src/app/api/admin/students/route.ts",
+    "line": 119,
+    "summary": "Case-sensitive action validation rejects 'Enable'/'DISABLE'/'Enable '",
+    "failure_scenario": "Frontend sends action: 'Enable' (capitalized) → API returns 400 'valid action (enable/disable) are required' despite valid intent. Frontend currently sends lowercase but API contract is brittle"
+  },
+  {
+    "file": "src/components/dashboard/SubjectsOverview.tsx",
+    "line": 62,
+    "summary": "Client-side O(n³) transformation on every render - 4 sorts, 2 filters, nested maps for progress calculation",
+    "failure_scenario": "Student with 10 subjects × 10 units × 20 topics = 2000 topics → 60,000+ iterations per render. Jank on mobile; blocks main thread. Should move aggregation to server or use RSC"
+  },
+  {
+    "file": "src/app/api/student/dashboard/route.ts",
+    "line": 14,
+    "summary": "Over-fetching in dashboard API - returns entire curriculum tree (all subjects/units/topics/resources/recordings/quizzes/progress) with no pagination or field selection",
+    "failure_scenario": "50 subjects × 10 units × 15 topics = 7500 topics × 3 nested arrays → ~2MB JSON per request. Slow TTFB, high memory, bandwidth waste for mobile users. No ?subjectId= filter or select to prune unused relations"
+  }
+]

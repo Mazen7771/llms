@@ -56,3 +56,52 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Failed to create unit" }, { status: 500 });
   }
 }
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user || session.user.role !== "TEACHER") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { id, name, orderIndex } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: "Unit ID is required" }, { status: 400 });
+    }
+
+    const unit = await prisma.unit.update({
+      where: { id },
+      data: { name, orderIndex, updatedAt: new Date() },
+    });
+
+    return NextResponse.json({ unit });
+  } catch (error) {
+    console.error("Update unit error:", error);
+    return NextResponse.json({ error: "Failed to update unit" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user || session.user.role !== "TEACHER") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "Unit ID is required" }, { status: 400 });
+    }
+
+    await prisma.unit.delete({ where: { id } });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Delete unit error:", error);
+    return NextResponse.json({ error: "Failed to delete unit" }, { status: 500 });
+  }
+}

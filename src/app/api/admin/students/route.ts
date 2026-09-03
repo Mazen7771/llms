@@ -57,41 +57,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function PATCH(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user || session.user.role !== "TEACHER") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const { studentId, action } = body;
-
-    if (!studentId || !["enable", "disable"].includes(action)) {
-      return NextResponse.json(
-        { error: "studentId and action (enable|disable) are required" },
-        { status: 400 }
-      );
-    }
-
-    const accountStatus = action === "enable" ? "ACTIVE" : "DISABLED";
-
-    const updated = await prisma.user.updateMany({
-      where: { studentId, role: "STUDENT" },
-      data: { accountStatus },
-    });
-
-    if (updated.count === 0) {
-      return NextResponse.json({ error: "Student not found" }, { status: 404 });
-    }
-
-    return NextResponse.json({ studentId, accountStatus });
-  } catch (error) {
-    console.error("Update student status error:", error);
-    return NextResponse.json({ error: "Failed to update student status" }, { status: 500 });
-  }
-}
-
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -138,5 +103,53 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Create student error:", error);
     return NextResponse.json({ error: "Failed to create student" }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user || session.user.role !== "TEACHER") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { studentId, id, action } = body;
+
+    // Support both studentId (string like "001") and id (UUID)
+    const identifier = studentId || id;
+    if (!identifier || !action || !["enable", "disable"].includes(action)) {
+      return NextResponse.json({ error: "Student ID and valid action (enable/disable) are required" }, { status: 400 });
+    }
+
+    // Try to find by studentId first, then by id (UUID)
+    let student = null;
+    if (studentId) {
+      student = await prisma.user.findUnique({ where: { studentId } });
+    }
+    if (!student && id) {
+      student = await prisma.user.findUnique({ where: { id } });
+    }
+
+    if (!student) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    }
+
+    if (student.role !== "STUDENT") {
+      return NextResponse.json({ error: "Can only update student accounts" }, { status: 400 });
+    }
+
+    const accountStatus = action === "enable" ? "ACTIVE" : "DISABLED";
+
+    const updated = await prisma.user.update({
+      where: { id: student.id },
+      data: { accountStatus, updatedAt: new Date() },
+      select: { studentId: true, accountStatus: true },
+    });
+
+    return NextResponse.json({ studentId: updated.studentId, accountStatus: updated.accountStatus });
+  } catch (error) {
+    console.error("Update student status error:", error);
+    return NextResponse.json({ error: "Failed to update student status" }, { status: 500 });
   }
 }

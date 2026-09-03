@@ -17,6 +17,7 @@ export async function GET(
 
     const { topicId } = await params;
 
+    // Topic is addressed by its database ID in the URL (the model has no slug).
     const topic = await prisma.topic.findUnique({
       where: { id: topicId },
       include: {
@@ -85,21 +86,35 @@ export async function PUT(
     const body = await request.json();
     const { lessonViewed, recordingWatched, quizCompleted } = body;
 
+    // Resolve the topic by id (see GET).
+    const topic = await prisma.topic.findUnique({
+      where: { id: topicId },
+      select: { id: true },
+    });
+    if (!topic) {
+      return NextResponse.json({ error: "Topic not found" }, { status: 404 });
+    }
+
+    // Only include fields the client actually sent, so toggling one
+    // checkbox never wipes the others (data-loss bug fix).
+    const data: { lessonViewed?: boolean; recordingWatched?: boolean; quizCompleted?: boolean } = {};
+    if (typeof lessonViewed === "boolean") data.lessonViewed = lessonViewed;
+    if (typeof recordingWatched === "boolean") data.recordingWatched = recordingWatched;
+    if (typeof quizCompleted === "boolean") data.quizCompleted = quizCompleted;
+
     const progress = await prisma.progress.upsert({
-      where: { studentId_topicId: { studentId: session.user.id, topicId } },
+      where: { studentId_topicId: { studentId: session.user.id, topicId: topic.id } },
       update: {
-        lessonViewed: lessonViewed ?? false,
-        recordingWatched: recordingWatched ?? false,
-        quizCompleted: quizCompleted ?? false,
+        ...data,
         updatedAt: new Date(),
       },
       create: {
         id: crypto.randomUUID(),
         studentId: session.user.id,
-        topicId,
-        lessonViewed: lessonViewed ?? false,
-        recordingWatched: recordingWatched ?? false,
-        quizCompleted: quizCompleted ?? false,
+        topicId: topic.id,
+        lessonViewed: data.lessonViewed ?? false,
+        recordingWatched: data.recordingWatched ?? false,
+        quizCompleted: data.quizCompleted ?? false,
         updatedAt: new Date(),
       },
     });

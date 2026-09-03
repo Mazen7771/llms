@@ -4,7 +4,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ quizId: string }> }
 ) {
   try {
@@ -14,51 +14,64 @@ export async function GET(
     }
 
     const { quizId } = await params;
+    const { searchParams } = new URL(request.url);
+    const attemptId = searchParams.get("attemptId");
 
-    const attempt = await prisma.quizAttempt.findUnique({
-      where: { quizId_studentId: { quizId, studentId: session.user.id } },
-    });
-
-    if (!attempt) {
-      return NextResponse.json({ error: "No attempt found" }, { status: 404 });
-    }
-
-    if (!attempt.submittedAt) {
-      return NextResponse.json({ error: "Quiz not yet submitted" }, { status: 400 });
-    }
-
-    const answers = await prisma.studentAnswer.findMany({
-      where: { attemptId: attempt.id },
+    // Fetch quiz with questions and options
+    const quiz = await prisma.quiz.findUnique({
+      where: { id: quizId },
       include: {
+        Topic: {
+          include: {
+            Unit: {
+              include: {
+                Subject: true,
+              },
+            },
+          },
+        },
         Question: {
           include: { QuestionOption: true },
+          orderBy: { orderIndex: "asc" },
         },
       },
     });
 
+    if (!quiz) {
+      return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
+    }
+
+    // Find the attempt
+    let attempt;
+    if (attemptId) {
+      attempt = await prisma.quizAttempt.findUnique({
+        where: { id: attemptId },
+      });
+
+      if (!attempt || attempt.studentId !== session.user.id || attempt.quizId !== quizId) {
+        return NextResponse.json({ error: "Attempt not found" }, { status: 404 });
+      }
+    } else {
+      // Get latest attempt
+      attempt = await prisma.quizAttempt.findFirst({
+        where: { studentId: session.user.id, quizId },
+        orderBy: { startedAt: "desc" },
+      });
+
+      if (!attempt) {
+        return NextResponse.json({ error: "No attempt found" }, { status: 404 });
+      }
+    }
+
+    // Fetch student answers for this attempt
+    const studentAnswers = await prisma.studentAnswer.findMany({
+      where: { attemptId: attempt.id },
+    });
+
     return NextResponse.json({
-      attemptId: attempt.id,
-      score: attempt.score,
-      maxScore: attempt.maxScore,
-      percentage: attempt.maxScore && attempt.maxScore > 0
-        ? Math.round(((attempt.score ?? 0) / attempt.maxScore) * 100)
-        : 0,
-      submittedAt: attempt.submittedAt,
-      answers: answers.map((a) => ({
-        questionId: a.questionId,
-        prompt: a.Question.prompt,
-        type: a.Question.type,
-        selectedOptionId: a.selectedOptionId,
-        textAnswer: a.textAnswer,
-        isCorrect: a.isCorrect,
-        marksAwarded: a.marksAwarded,
-        correctOptionId: a.Question.QuestionOption.find((o) => o.isCorrect)?.id ?? null,
-        options: a.Question.QuestionOption.map((o) => ({
-          id: o.id,
-          text: o.text,
-          isCorrect: o.isCorrect,
-        })),
-      })),
+      quiz,
+      attempt,
+      answers: studentAnswers,
     });
   } catch (error) {
     console.error("Quiz results error:", error);

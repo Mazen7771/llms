@@ -69,10 +69,10 @@ const stats = [
 
 const quickActions = [
   {
-    href: "/dashboard",
+    href: "/admin/content",
     icon: "➕",
     title: "Add Content",
-    description: "Content management coming soon — browse the current catalog",
+    description: "Create subjects, units, topics, resources, recordings & quizzes",
     bg: "bg-primary/10 dark:bg-primary/20",
     ring: "focus-visible:ring-primary",
   },
@@ -85,10 +85,10 @@ const quickActions = [
     ring: "focus-visible:ring-success",
   },
   {
-    href: "/dashboard/search",
+    href: "/admin/content",
     icon: "❓",
-    title: "Browse Quizzes",
-    description: "Quiz builder coming soon — search existing content",
+    title: "Manage Quizzes",
+    description: "Generate quizzes with AI from any topic",
     bg: "bg-purple-500/10 dark:bg-purple-500/20",
     ring: "focus-visible:ring-purple-500",
   },
@@ -96,10 +96,10 @@ const quickActions = [
 
 const quickLinks = [
   {
-    href: "/dashboard/search?type=resource",
+    href: "/admin/content",
     icon: "📚",
-    title: "Content Library",
-    desc: "Search subjects, units, and topics",
+    title: "Content Manager",
+    desc: "Manage subjects, units, topics, and content",
   },
   {
     href: "/admin/students",

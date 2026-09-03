@@ -40,7 +40,13 @@ export default function NotificationsPage() {
   }, []);
 
   const handleMarkRead = async (id: string) => {
-    await fetch(`/api/notifications/${id}/read`, { method: "POST" });
+    try {
+      const res = await fetch(`/api/notifications/${id}/read`, { method: "POST" });
+      // Only reflect the read state locally if the server confirmed it.
+      if (!res.ok) return;
+    } catch {
+      return;
+    }
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n))
     );
@@ -101,7 +107,7 @@ export default function NotificationsPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-gray-900 dark:text-white">{notification.message}</p>
                   <div className="flex items-center gap-3 mt-2 text-sm text-gray-500 dark:text-gray-400">
-                    <span className="capitalize">{notification.type.replace("_", " ")}</span>
+                    <span className="capitalize">{notification.type.replaceAll("_", " ")}</span>
                     <span>·</span>
                     <time dateTime={notification.createdAt}>
                       {new Date(notification.createdAt).toLocaleDateString("en-US", {

@@ -11,34 +11,36 @@ interface TopicProgress {
   quizCompleted: boolean;
 }
 
-interface Topic {
+// Shape returned by /api/student/dashboard for each topic.
+interface DashboardTopic {
   id: string;
   name: string;
   orderIndex: number;
-  Progress: TopicProgress[];
-  _count: { Recording: number; Quiz: number };
+  recordingsCount: number;
+  hasQuiz: boolean;
+  progress?: TopicProgress;
 }
 
-interface Unit {
+// Shape returned by /api/student/dashboard for each unit (units is an object
+// keyed by unit id, so the client iterates Object.values()).
+interface DashboardUnit {
   id: string;
   name: string;
   orderIndex: number;
-  topics: Topic[];
-  totalTopics: number;
-  completedTopics: number;
-  progress: number;
+  topics: DashboardTopic[];
 }
 
 interface RawSubject {
   id: string;
   name: string;
   slug: string;
-  units: Array<{
-    id: string;
-    name: string;
-    orderIndex: number;
-    topics: Topic[];
-  }>;
+  units: Record<string, DashboardUnit>;
+}
+
+interface Unit extends DashboardUnit {
+  totalTopics: number;
+  completedTopics: number;
+  progress: number;
 }
 
 interface SubjectWithProgress {
@@ -52,6 +54,15 @@ interface SubjectWithProgress {
   overallProgress: number;
 }
 
+const isTopicCompleted = (topic: DashboardTopic) => {
+  const p = topic.progress;
+  return (
+    !!p?.lessonViewed &&
+    (topic.recordingsCount === 0 || !!p?.recordingWatched) &&
+    (!topic.hasQuiz || !!p?.quizCompleted)
+  );
+};
+
 export function SubjectsOverview() {
   const [subjects, setSubjects] = useState<SubjectWithProgress[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,7 +71,7 @@ export function SubjectsOverview() {
   useEffect(() => {
     let mounted = true;
 
-    fetch("/api/student/subjects")
+    fetch("/api/student/dashboard")
       .then(async (res) => {
         if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
         return res.json();
@@ -71,31 +82,17 @@ export function SubjectsOverview() {
           let totalTopics = 0;
           let completedTopics = 0;
 
-          const units: Unit[] = (subject.units ?? []).map((unit) => {
+          const units: Unit[] = Object.values(subject.units ?? {}).map((unit) => {
             const topicsWithProgress = (unit.topics ?? []).map((topic) => {
               totalTopics++;
-              const progress = topic.Progress?.[0];
-              const isCompleted =
-                !!progress?.lessonViewed &&
-                (topic._count?.Recording === 0 || !!progress?.recordingWatched) &&
-                (topic._count?.Quiz === 0 || !!progress?.quizCompleted);
-              if (isCompleted) completedTopics++;
+              if (isTopicCompleted(topic)) completedTopics++;
               return topic;
             });
 
-            const unitCompleted = topicsWithProgress.filter((t) => {
-              const p = t.Progress?.[0];
-              return (
-                !!p?.lessonViewed &&
-                (t._count?.Recording === 0 || !!p?.recordingWatched) &&
-                (t._count?.Quiz === 0 || !!p?.quizCompleted)
-              );
-            }).length;
+            const unitCompleted = topicsWithProgress.filter(isTopicCompleted).length;
 
             return {
-              id: unit.id,
-              name: unit.name,
-              orderIndex: unit.orderIndex,
+              ...unit,
               topics: topicsWithProgress.sort((a, b) => a.orderIndex - b.orderIndex),
               totalTopics: topicsWithProgress.length,
               completedTopics: unitCompleted,
@@ -174,7 +171,7 @@ export function SubjectsOverview() {
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
       {subjects.map((subject) => (
-        <Link key={subject.id} href={`/dashboard/content`} className="group">
+        <Link key={subject.id} href={`/dashboard/${subject.slug}`} className="group">
           <Card variant="interactive" padding="lg">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">

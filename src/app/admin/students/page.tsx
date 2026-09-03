@@ -2,8 +2,9 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { arSA, enUS } from "date-fns/locale";
+import { enUS } from "date-fns/locale";
 import Link from "next/link";
+import { Eye, BarChart2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -199,15 +200,24 @@ function AdminStudentsPageContent() {
                         <TableCell>{student._count.QuizAttempt}</TableCell>
                         <TableCell>{formatDate(student.createdAt)}</TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant={isActive ? "outline" : "secondary"}
-                            size="sm"
-                            onClick={() => handleAction(displayId, isActive ? "disable" : "enable")}
-                            className="w-24"
-                            aria-label={`${isActive ? "Disable" : "Enable"} student ${displayId}`}
-                          >
-                            {isActive ? "Disable" : "Enable"}
-                          </Button>
+                          <div className="flex items-center justify-end gap-2">
+                            <Link
+                              href={`/admin/students/${student.id}/progress`}
+                              className="text-primary hover:underline text-sm font-medium"
+                              aria-label={`View progress for student ${displayId}`}
+                            >
+                              View Progress
+                            </Link>
+                            <Button
+                              variant={isActive ? "outline" : "secondary"}
+                              size="sm"
+                              onClick={() => handleAction(student.studentId || student.id, isActive ? "disable" : "enable")}
+                              className="w-24"
+                              aria-label={`${isActive ? "Disable" : "Enable"} student ${displayId}`}
+                            >
+                              {isActive ? "Disable" : "Enable"}
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );

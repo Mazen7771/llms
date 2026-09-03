@@ -291,8 +291,10 @@ function NotificationSettingsTab() {
 }
 
 function HelpSupportTab() {
+  const [toast, setToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
   return (
     <div className="space-y-6">
+      {toast && <Alert variant={toast.type} dismissible onDismiss={() => setToast(null)}>{toast.text}</Alert>}
       <Card variant="outlined" padding="lg">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Help & Support</h2>
         <p className="text-gray-600 dark:text-gray-400 mb-6">Need assistance? Contact our support team.</p>
@@ -306,7 +308,7 @@ function HelpSupportTab() {
               <Button variant="outline" onClick={() => window.open(`https://wa.me/${WHATSAPP.replace(/\s+/g, "")}`, "_blank")}>
                 Open WhatsApp
               </Button>
-              <Button variant="ghost" onClick={() => copyToClipboard(WHATSAPP, "WhatsApp number", () => {})}>
+              <Button variant="ghost" onClick={() => copyToClipboard(WHATSAPP, "WhatsApp number", setToast)}>
                 Copy Number
               </Button>
             </div>
@@ -320,7 +322,7 @@ function HelpSupportTab() {
               <Button variant="outline" onClick={() => window.open(`tel:${PHONE}`, "_self")}>
                 Call Now
               </Button>
-              <Button variant="ghost" onClick={() => copyToClipboard(PHONE, "Phone number", () => {})}>
+              <Button variant="ghost" onClick={() => copyToClipboard(PHONE, "Phone number", setToast)}>
                 Copy Number
               </Button>
             </div>
@@ -334,7 +336,7 @@ function HelpSupportTab() {
               <Button variant="outline" onClick={() => window.open(`mailto:${EMAIL}`, "_self")}>
                 Send Email
               </Button>
-              <Button variant="ghost" onClick={() => copyToClipboard(EMAIL, "Email address", () => {})}>
+              <Button variant="ghost" onClick={() => copyToClipboard(EMAIL, "Email address", setToast)}>
                 Copy Email
               </Button>
             </div>
@@ -352,9 +354,9 @@ function HelpSupportTab() {
             <p className="font-medium text-gray-900 dark:text-white">👥 Student Management</p>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Invite and manage students</p>
           </a>
-          <a href="/dashboard/search?type=resource" className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-primary/50 hover:bg-primary/5 dark:hover:bg-primary/10 transition-all text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
-            <p className="font-medium text-gray-900 dark:text-white">📚 Content Library</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Search subjects, units, and topics</p>
+          <a href="/admin/content" className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-primary/50 hover:bg-primary/5 dark:hover:bg-primary/10 transition-all text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+            <p className="font-medium text-gray-900 dark:text-white">📚 Content Manager</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage subjects, units, topics, and content</p>
           </a>
         </div>
       </Card>

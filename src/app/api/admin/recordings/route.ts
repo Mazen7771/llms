@@ -75,3 +75,64 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Failed to create recording" }, { status: 500 });
   }
 }
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user || session.user.role !== "TEACHER") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { id, title, description, streamVideoId, durationSeconds, recordedDate } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: "Recording ID is required" }, { status: 400 });
+    }
+
+    const existing = await prisma.recording.findUnique({ where: { streamVideoId } });
+    if (existing && existing.id !== id) {
+      return NextResponse.json({ error: "Recording with this Stream ID already exists" }, { status: 400 });
+    }
+
+    const recording = await prisma.recording.update({
+      where: { id },
+      data: {
+        title,
+        description,
+        streamVideoId,
+        durationSeconds,
+        recordedDate: recordedDate ? new Date(recordedDate) : null,
+        updatedAt: new Date(),
+      },
+    });
+
+    return NextResponse.json({ recording });
+  } catch (error) {
+    console.error("Update recording error:", error);
+    return NextResponse.json({ error: "Failed to update recording" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user || session.user.role !== "TEACHER") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "Recording ID is required" }, { status: 400 });
+    }
+
+    await prisma.recording.delete({ where: { id } });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Delete recording error:", error);
+    return NextResponse.json({ error: "Failed to delete recording" }, { status: 500 });
+  }
+}

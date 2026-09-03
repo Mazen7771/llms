@@ -13,45 +13,10 @@ interface SearchResult {
   id: string;
   title: string;
   description?: string;
+  href: string;
   subjectName?: string;
   unitName?: string;
   topicName?: string;
-  href: string;
-}
-
-interface RawResults {
-  subjects?: Array<{ id: string; name: string; slug: string }>;
-  topics?: Array<{
-    id: string;
-    name: string;
-    Unit?: { name?: string; Subject?: { name?: string; slug?: string } };
-  }>;
-  quizzes?: Array<{
-    id: string;
-    title: string;
-    Topic?: { name?: string; Unit?: { name?: string; Subject?: { name?: string } } };
-  }>;
-  recordings?: Array<{
-    id: string;
-    title: string;
-    description?: string | null;
-    Topic?: { name?: string; Unit?: { name?: string; Subject?: { name?: string } } };
-  }>;
-  resources?: Array<{
-    id: string;
-    title: string;
-    description?: string | null;
-    fileType?: string | null;
-    Topic?: { name?: string; Unit?: { name?: string; Subject?: { name?: string } } };
-  }>;
-}
-
-function topicNames(t: { name?: string; Unit?: { name?: string; Subject?: { name?: string } } } | undefined) {
-  return {
-    topicName: t?.name,
-    unitName: t?.Unit?.name,
-    subjectName: t?.Unit?.Subject?.name,
-  };
 }
 
 export default function SearchPage() {
@@ -66,9 +31,104 @@ export default function SearchPage() {
       const stored = localStorage.getItem("recentSearches");
       if (stored) setRecentSearches(JSON.parse(stored));
     } catch {
-      // ignore corrupt localStorage
+      // Ignore corrupt localStorage
     }
   }, []);
+
+  // The search API returns { results: { subjects, topics, quizzes, recordings, resources } }.
+  // Flatten each bucket into a uniform list with a working navigation URL.
+  // Topics have no slug — they are addressed by UUID id in the URL.
+  const flattenResults = (payload: any): SearchResult[] => {
+    const flat: SearchResult[] = [];
+    const push = (r: SearchResult) => flat.push(r);
+
+    (payload?.subjects || []).forEach((s: any) => {
+      push({
+        type: "subject",
+        id: s.id,
+        title: s.name,
+        href: `/dashboard/${s.slug}`,
+      });
+      (s.Unit || []).forEach((u: any) => {
+        push({
+          type: "unit",
+          id: u.id,
+          title: u.name,
+          subjectName: s.name,
+          href: `/dashboard/${s.slug}/${u.slug}`,
+        });
+        (u.Topic || []).forEach((t: any) => {
+          push({
+            type: "topic",
+            id: t.id,
+            title: t.name,
+            subjectName: s.name,
+            unitName: u.name,
+            href: `/dashboard/${s.slug}/${u.slug}/${t.id}`,
+          });
+        });
+      });
+    });
+
+    (payload?.topics || []).forEach((t: any) => {
+      const subject = t.Unit?.Subject;
+      const unit = t.Unit;
+      push({
+        type: "topic",
+        id: t.id,
+        title: t.name,
+        subjectName: subject?.name,
+        unitName: unit?.name,
+        href: subject && unit ? `/dashboard/${subject.slug}/${unit.slug}/${t.id}` : "#",
+      });
+    });
+
+    (payload?.quizzes || []).forEach((q: any) => {
+      const subject = q.Topic?.Unit?.Subject;
+      const unit = q.Topic?.Unit;
+      push({
+        type: "quiz",
+        id: q.id,
+        title: q.title,
+        subjectName: subject?.name,
+        unitName: unit?.name,
+        topicName: q.Topic?.name,
+        href: `/quiz/${q.id}`,
+      });
+    });
+
+    (payload?.recordings || []).forEach((r: any) => {
+      const subject = r.Topic?.Unit?.Subject;
+      const unit = r.Topic?.Unit;
+      push({
+        type: "recording",
+        id: r.id,
+        title: r.title,
+        description: r.description,
+        subjectName: subject?.name,
+        unitName: unit?.name,
+        topicName: r.Topic?.name,
+        href: subject && unit && r.Topic ? `/dashboard/${subject.slug}/${unit.slug}/${r.Topic.id}` : "#",
+      });
+    });
+
+    (payload?.resources || []).forEach((r: any) => {
+      const subject = r.Topic?.Unit?.Subject;
+      const unit = r.Topic?.Unit;
+      push({
+        type: "resource",
+        id: r.id,
+        title: r.title,
+        description: r.description,
+        subjectName: subject?.name,
+        unitName: unit?.name,
+        topicName: r.Topic?.name,
+        href: subject && unit && r.Topic ? `/dashboard/${subject.slug}/${unit.slug}/${r.Topic.id}` : "#",
+      });
+    });
+
+    return flat;
+  };
 
   const handleSearch = async (searchQuery: string) => {
     if (!searchQuery.trim()) {
@@ -81,50 +141,8 @@ export default function SearchPage() {
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
       if (!res.ok) throw new Error(`Search failed (${res.status})`);
-      const data: { results?: RawResults } = await res.json();
-      const raw = data.results ?? {};
-
-      const normalized: SearchResult[] = [
-        ...(raw.subjects ?? []).map((s) => ({
-          type: "subject" as ResultType,
-          id: `subject-${s.id}`,
-          title: s.name,
-          subjectName: s.name,
-          href: `/dashboard/content`,
-        })),
-        ...(raw.topics ?? []).map((t) => ({
-          type: "topic" as ResultType,
-          id: `topic-${t.id}`,
-          title: t.name,
-          ...topicNames(t),
-          href: `/dashboard/content`,
-        })),
-        ...(raw.quizzes ?? []).map((q) => ({
-          type: "quiz" as ResultType,
-          id: `quiz-${q.id}`,
-          title: q.title,
-          ...topicNames(q.Topic),
-          href: `/dashboard/quizzes`,
-        })),
-        ...(raw.recordings ?? []).map((r) => ({
-          type: "recording" as ResultType,
-          id: `recording-${r.id}`,
-          title: r.title,
-          description: r.description ?? undefined,
-          ...topicNames(r.Topic),
-          href: `/dashboard/content`,
-        })),
-        ...(raw.resources ?? []).map((r) => ({
-          type: "resource" as ResultType,
-          id: `resource-${r.id}`,
-          title: r.title,
-          description: r.description ?? undefined,
-          ...topicNames(r.Topic),
-          href: `/dashboard/content`,
-        })),
-      ];
-
-      setResults(normalized);
+      const data: { results?: any } = await res.json();
+      setResults(flattenResults(data.results));
 
       const updated = [searchQuery, ...recentSearches.filter((s) => s !== searchQuery)].slice(0, 5);
       setRecentSearches(updated);
@@ -147,7 +165,7 @@ export default function SearchPage() {
     setError(null);
   };
 
-  const getTypeIcon = (type: SearchResult["type"]) => {
+  const getTypeIcon = (type: ResultType) => {
     switch (type) {
       case "subject":
         return "📚";
@@ -217,7 +235,12 @@ export default function SearchPage() {
               Results for "{query}" ({results.length})
             </h2>
             {results.map((result) => (
-              <GlassCard key={result.id} variant="default" padding="md" className="flex items-center gap-4">
+              <GlassCard
+                key={`${result.type}-${result.id}`}
+                variant="default"
+                padding="md"
+                className="flex items-center gap-4"
+              >
                 <span className="text-2xl" aria-hidden="true">{getTypeIcon(result.type)}</span>
                 <div className="flex-1 min-w-0">
                   <h3 className="font-medium text-gray-900 dark:text-white truncate">{result.title}</h3>
@@ -246,12 +269,14 @@ export default function SearchPage() {
                     )}
                   </div>
                 </div>
-                <Link
-                  href={result.href}
-                  className="inline-flex items-center justify-center font-medium rounded-lg px-3 py-1.5 text-sm gap-1.5 border border-gray-300 dark:border-gray-600 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200"
-                >
-                  View
-                </Link>
+                {result.href !== "#" && (
+                  <Link
+                    href={result.href}
+                    className="inline-flex items-center justify-center font-medium rounded-lg px-3 py-1.5 text-sm gap-1.5 border border-gray-300 dark:border-gray-600 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200"
+                  >
+                    View
+                  </Link>
+                )}
               </GlassCard>
             ))}
           </div>

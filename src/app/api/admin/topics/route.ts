@@ -55,3 +55,52 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Failed to create topic" }, { status: 500 });
   }
 }
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user || session.user.role !== "TEACHER") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { id, name, orderIndex } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: "Topic ID is required" }, { status: 400 });
+    }
+
+    const topic = await prisma.topic.update({
+      where: { id },
+      data: { name, orderIndex, updatedAt: new Date() },
+    });
+
+    return NextResponse.json({ topic });
+  } catch (error) {
+    console.error("Update topic error:", error);
+    return NextResponse.json({ error: "Failed to update topic" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user || session.user.role !== "TEACHER") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "Topic ID is required" }, { status: 400 });
+    }
+
+    await prisma.topic.delete({ where: { id } });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Delete topic error:", error);
+    return NextResponse.json({ error: "Failed to delete topic" }, { status: 500 });
+  }
+}

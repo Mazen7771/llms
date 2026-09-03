@@ -13,7 +13,18 @@ export async function GET() {
     const subjects = await prisma.subject.findMany({
       orderBy: { name: "asc" },
       include: {
-        Unit: { orderBy: { orderIndex: "asc" } },
+        Unit: {
+          orderBy: { orderIndex: "asc" },
+          include: {
+            Topic: {
+              orderBy: { orderIndex: "asc" },
+              include: {
+                _count: { select: { Resource: true, Recording: true, Quiz: true } },
+              },
+            },
+            _count: { select: { Topic: true } },
+          },
+        },
         _count: { select: { Unit: true } },
       },
     });
@@ -54,5 +65,54 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Create subject error:", error);
     return NextResponse.json({ error: "Failed to create subject" }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user || session.user.role !== "TEACHER") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { id, name, slug } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: "Subject ID is required" }, { status: 400 });
+    }
+
+    const subject = await prisma.subject.update({
+      where: { id },
+      data: { name, slug, updatedAt: new Date() },
+    });
+
+    return NextResponse.json({ subject });
+  } catch (error) {
+    console.error("Update subject error:", error);
+    return NextResponse.json({ error: "Failed to update subject" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user || session.user.role !== "TEACHER") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "Subject ID is required" }, { status: 400 });
+    }
+
+    await prisma.subject.delete({ where: { id } });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Delete subject error:", error);
+    return NextResponse.json({ error: "Failed to delete subject" }, { status: 500 });
   }
 }

@@ -38,9 +38,12 @@ export default function SettingsPage() {
     Promise.all([fetch("/api/user/profile"), fetch("/api/user/preferences")])
       .then(async ([profileRes, prefRes]) => {
         const [profile, prefs] = await Promise.all([profileRes.json(), prefRes.json()]);
-        setName(profile.name || "");
-        setEmail(profile.email || "");
+        setName(profile?.name || "");
+        setEmail(profile?.email || "");
         if (prefs) setPreferences(prefs);
+      })
+      .catch(() => {
+        // Leave defaults in place on load failure.
       })
       .finally(() => setLoading(false));
   }, []);

@@ -15,159 +15,122 @@ export async function POST(
 
     const { quizId } = await params;
     const body = await request.json();
-    const { answers } = body as {
-      answers: Array<{
-        questionId: string;
-        selectedOptionId?: string | null;
-        textAnswer?: string | null;
-      }>;
-    };
+    const { attemptId, answers } = body as { attemptId?: string; answers: { questionId: string; selectedOptionId?: string; textAnswer?: string }[] };
 
-    if (!answers || !Array.isArray(answers)) {
-      return NextResponse.json({ error: "Answers array is required" }, { status: 400 });
-    }
-
-    // Find the existing in-progress attempt
-    const attempt = await prisma.quizAttempt.findUnique({
-      where: { quizId_studentId: { quizId, studentId: session.user.id } },
-    });
-
-    if (!attempt) {
-      return NextResponse.json(
-        { error: "No in-progress attempt found. Start the quiz first." },
-        { status: 400 }
-      );
-    }
-
-    if (attempt.submittedAt) {
-      return NextResponse.json({ error: "Quiz already submitted" }, { status: 400 });
-    }
-
-    // Load questions with their correct options for grading
-    const questions = await prisma.question.findMany({
-      where: { quizId },
-      include: { QuestionOption: true },
-    });
-
-    const questionMap = new Map(questions.map((q) => [q.id, q]));
-
-    let score = 0;
-    let maxScore = 0;
-
-    // Grade and save each answer
-    const answerData = [];
-    for (const a of answers) {
-      const question = questionMap.get(a.questionId);
-      if (!question) continue;
-
-      maxScore += question.marks;
-
-      let isCorrect = false;
-      let marksAwarded = 0;
-
-      if (question.type === "MULTIPLE_CHOICE" && a.selectedOptionId) {
-        const correctOption = question.QuestionOption.find((o) => o.isCorrect);
-        isCorrect = correctOption?.id === a.selectedOptionId;
-      } else if (question.type === "SHORT_ANSWER" && a.textAnswer) {
-        // For short answer, check against any correct option text (case-insensitive)
-        const correctOption = question.QuestionOption.find((o) => o.isCorrect);
-        if (correctOption) {
-          isCorrect =
-            a.textAnswer.trim().toLowerCase() === correctOption.text.trim().toLowerCase();
-        }
-      }
-      // ESSAY: not auto-graded, isCorrect stays null
-
-      if (isCorrect) {
-        marksAwarded = question.marks;
-        score += question.marks;
-      }
-
-      answerData.push({
-        id: crypto.randomUUID(),
-        attemptId: attempt.id,
-        questionId: a.questionId,
-        selectedOptionId: a.selectedOptionId ?? null,
-        textAnswer: a.textAnswer ?? null,
-        isCorrect: question.type === "ESSAY" ? null : isCorrect,
-        marksAwarded,
-      });
-    }
-
-    // Batch insert answers and update attempt in a transaction
-    await prisma.$transaction([
-      prisma.studentAnswer.createMany({ data: answerData }),
-      prisma.quizAttempt.update({
-        where: { id: attempt.id },
-        data: {
-          submittedAt: new Date(),
-          score,
-          maxScore,
-        },
-      }),
-    ]);
-
-    // Update student progress for the quiz's topic
+    // Fetch quiz with questions and correct options
     const quiz = await prisma.quiz.findUnique({
       where: { id: quizId },
-      select: { topicId: true },
-    });
-
-    if (quiz) {
-      // Check if student has passed (score >= 50% of maxScore)
-      const passed = maxScore > 0 && score / maxScore >= 0.5;
-
-      await prisma.progress.upsert({
-        where: { studentId_topicId: { studentId: session.user.id, topicId: quiz.topicId } },
-        update: {
-          quizCompleted: passed ? true : undefined,
-          updatedAt: new Date(),
-        },
-        create: {
-          id: crypto.randomUUID(),
-          studentId: session.user.id,
-          topicId: quiz.topicId,
-          lessonViewed: false,
-          recordingWatched: false,
-          quizCompleted: passed,
-          updatedAt: new Date(),
-        },
-      });
-    }
-
-    // Fetch the full results with correct answers
-    const results = await prisma.studentAnswer.findMany({
-      where: { attemptId: attempt.id },
       include: {
         Question: {
           include: { QuestionOption: true },
+          orderBy: { orderIndex: "asc" },
         },
       },
     });
 
+    if (!quiz) {
+      return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
+    }
+
+    if (!quiz.isActive) {
+      return NextResponse.json({ error: "Quiz is not active" }, { status: 400 });
+    }
+
+    let attempt;
+
+    if (attemptId) {
+      // Update existing attempt
+      attempt = await prisma.quizAttempt.findUnique({
+        where: { id: attemptId },
+        include: { Quiz: true },
+      });
+
+      if (!attempt || attempt.studentId !== session.user.id || attempt.quizId !== quizId) {
+        return NextResponse.json({ error: "Invalid attempt" }, { status: 400 });
+      }
+
+      if (attempt.submittedAt) {
+        return NextResponse.json({ error: "Quiz already submitted" }, { status: 400 });
+      }
+    } else {
+      // Create new attempt
+      attempt = await prisma.quizAttempt.create({
+        data: {
+          id: crypto.randomUUID(),
+          quizId,
+          studentId: session.user.id,
+          startedAt: new Date(),
+        },
+      });
+    }
+
+    // Grade answers
+    let totalScore = 0;
+    let maxScore = 0;
+    const studentAnswersToCreate = [];
+
+    for (const question of quiz.Question) {
+      maxScore += question.marks;
+      const studentAnswer = answers.find((a) => a.questionId === question.id);
+
+      let isCorrect = false;
+      let marksAwarded = 0;
+
+      if (studentAnswer) {
+        if (question.type === "MULTIPLE_CHOICE" && studentAnswer.selectedOptionId) {
+          const correctOption = question.QuestionOption.find((opt) => opt.isCorrect);
+          isCorrect = correctOption?.id === studentAnswer.selectedOptionId;
+          marksAwarded = isCorrect ? question.marks : 0;
+        } else if ((question.type === "SHORT_ANSWER" || question.type === "ESSAY") && studentAnswer.textAnswer) {
+          // Mark for manual grading
+          isCorrect = false;
+          marksAwarded = 0; // Will be graded manually
+        }
+      }
+
+      totalScore += marksAwarded;
+
+      studentAnswersToCreate.push({
+        id: crypto.randomUUID(),
+        attemptId: attempt.id,
+        questionId: question.id,
+        selectedOptionId: studentAnswer?.selectedOptionId || null,
+        textAnswer: studentAnswer?.textAnswer || null,
+        isCorrect: question.type === "MULTIPLE_CHOICE" ? isCorrect : null, // null = pending manual grade
+        marksAwarded,
+      });
+    }
+
+    // Save answers
+    await prisma.studentAnswer.createMany({ data: studentAnswersToCreate });
+
+    // Update attempt with score
+    const hasPendingGrading = quiz.Question.some((q) => q.type !== "MULTIPLE_CHOICE" && answers.find((a) => a.questionId === q.id)?.textAnswer);
+    const submittedAt = new Date();
+
+    const updatedAttempt = await prisma.quizAttempt.update({
+      where: { id: attempt.id },
+      data: {
+        submittedAt,
+        score: hasPendingGrading ? null : totalScore, // Null if needs manual grading
+        maxScore: hasPendingGrading ? null : maxScore,
+      },
+    });
+
+    // Clear localStorage
+    // Note: Can't clear client localStorage from server, but client will redirect
+
     return NextResponse.json({
-      attemptId: attempt.id,
-      score,
-      maxScore,
-      percentage: maxScore > 0 ? Math.round((score / maxScore) * 100) : 0,
-      answers: results.map((a) => ({
-        questionId: a.questionId,
-        prompt: a.Question.prompt,
-        type: a.Question.type,
-        selectedOptionId: a.selectedOptionId,
-        textAnswer: a.textAnswer,
-        isCorrect: a.isCorrect,
-        marksAwarded: a.marksAwarded,
-        correctOptionId: a.Question.QuestionOption.find((o) => o.isCorrect)?.id ?? null,
-        options: a.Question.QuestionOption.map((o) => ({
-          id: o.id,
-          text: o.text,
-          isCorrect: o.isCorrect,
-        })),
-      })),
+      attempt: {
+        id: updatedAttempt.id,
+        score: updatedAttempt.score,
+        maxScore: updatedAttempt.maxScore,
+        submittedAt: updatedAttempt.submittedAt,
+        needsManualGrading: hasPendingGrading,
+      },
     });
   } catch (error) {
-    console.error("Submit quiz error:", error);
+    console.error("Quiz submit error:", error);
     return NextResponse.json({ error: "Failed to submit quiz" }, { status: 500 });
   }
 }

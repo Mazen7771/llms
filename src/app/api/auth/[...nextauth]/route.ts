@@ -3,6 +3,8 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { Role, AccountStatus } from "@/generated/prisma/client";
+// Ensure env fallbacks are generated before any env checks
+import "@/lib/env";
 
 /**
  * Validate required env vars without crashing at module scope.

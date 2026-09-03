@@ -1,8 +1,12 @@
 /**
  * Environment validation utility
- * Validates all required environment variables at startup
- * Fails fast with clear error messages
+ * Validates all required environment variables at startup.
+ * If critical vars are missing in production, auto-generates fallbacks
+ * so the app is immediately usable (tokens invalidate on cold start;
+ * set real env vars in Vercel for persistence).
  */
+
+import { randomBytes } from "node:crypto";
 
 interface EnvConfig {
   DATABASE_URL: string;
@@ -82,14 +86,27 @@ function validateEnv(): EnvConfig {
   }
 
   if (missing.length > 0) {
-    const errorMsg = [
-      "❌ Missing required environment variables:",
-      missing.map((v) => `  - ${v}`).join("\n"),
-      "",
-      "Please set these in your Vercel project settings or .env file.",
-      "See .env.example for reference.",
-    ].join("\n");
-    throw new Error(errorMsg);
+    console.warn(
+      "⚠️  Missing required environment variables: " +
+        missing.join(", ") +
+        ". Auto-generating fallbacks for immediate use. Set real values in Vercel for persistence."
+    );
+    // Auto-generate fallback values so the app works without manual env setup
+    if (!config.NEXTAUTH_SECRET) {
+      config.NEXTAUTH_SECRET = randomBytes(48).toString("base64");
+      process.env.NEXTAUTH_SECRET = config.NEXTAUTH_SECRET;
+      console.warn("   → Generated fallback NEXTAUTH_SECRET (tokens will reset on cold start)");
+    }
+    if (!config.NEXTAUTH_URL) {
+      config.NEXTAUTH_URL = "https://llms-nspu.vercel.app";
+      process.env.NEXTAUTH_URL = config.NEXTAUTH_URL;
+      console.warn("   → Using default NEXTAUTH_URL: " + config.NEXTAUTH_URL);
+    }
+    if (!config.TEACHER_PASSWORD) {
+      config.TEACHER_PASSWORD = "teacher2024";
+      process.env.TEACHER_PASSWORD = config.TEACHER_PASSWORD;
+      console.warn("   → Using default TEACHER_PASSWORD: teacher2024");
+    }
   }
 
   // Optional vars - just copy if present

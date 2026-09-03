@@ -3,10 +3,15 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { Role, AccountStatus } from "@/generated/prisma/client";
-import { env, isEnvValid, validateEnvAtRuntime } from "@/lib/env";
 
-// Validate environment at runtime (not build time)
-validateEnvAtRuntime();
+/**
+ * Validate required env vars without crashing at module scope.
+ * Returns an array of missing variable names, or [] if all present.
+ */
+function getMissingEnvVars(): string[] {
+  const required = ["DATABASE_URL", "NEXTAUTH_SECRET", "NEXTAUTH_URL", "TEACHER_PASSWORD"];
+  return required.filter((k) => !process.env[k] || process.env[k]!.trim() === "");
+}
 
 export const authOptions: NextAuthOptions = {
   // Removed PrismaAdapter - using JWT-only sessions with singleton prisma
@@ -122,5 +127,30 @@ export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 };
 
-const handler = NextAuth(authOptions);
+const nextAuthHandler = NextAuth(authOptions);
+
+/**
+ * Wrap the NextAuth handler to validate env vars per-request instead of
+ * at module scope. If vars are missing, return a clear JSON error so the
+ * cause is diagnosable (instead of an opaque empty-500 from a module-load crash).
+ */
+async function handler(
+  req: Request,
+  ctx: { params: Promise<{ nextauth: string[] }> }
+): Promise<Response> {
+  const missing = getMissingEnvVars();
+  if (missing.length > 0) {
+    return Response.json(
+      {
+        error: "Server misconfigured",
+        missing,
+        hint: "Set these variables in Vercel → Project Settings → Environment Variables (Production scope), then redeploy.",
+      },
+      { status: 500 }
+    );
+  }
+  const params = await ctx.params;
+  return nextAuthHandler(req, { params });
+}
+
 export { handler as GET, handler as POST };

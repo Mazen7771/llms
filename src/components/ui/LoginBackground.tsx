@@ -1,13 +1,43 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 interface LoginBackgroundProps {
   variant: "student" | "teacher";
 }
 
+interface Particle {
+  left: number;
+  top: number;
+  delay: number;
+  duration: number;
+  size: number;
+}
+
+/**
+ * Random particle positions/sizes are generated ONLY after the component
+ * mounts on the client. Generating them in render would produce different
+ * values on the server vs. the client, causing a React hydration mismatch
+ * that disables interactivity on the whole page ("buttons do nothing").
+ */
 export function LoginBackground({ variant }: LoginBackgroundProps) {
   const isStudent = variant === "student";
   const primaryColor = isStudent ? "from-primary via-primary/60 to-primary-light" : "from-secondary via-secondary/60 to-primary";
   const secondaryColor = isStudent ? "from-accent/20 via-primary/10 to-transparent" : "from-accent/20 via-secondary/10 to-transparent";
+
+  const [particles, setParticles] = useState<Particle[]>([]);
+
+  useEffect(() => {
+    setParticles(
+      Array.from({ length: 20 }, () => ({
+        left: Math.random() * 100,
+        top: Math.random() * 100,
+        delay: Math.random() * 5,
+        duration: 15 + Math.random() * 10,
+        size: 2 + Math.random() * 4,
+      }))
+    );
+  }, []);
 
   return (
     <>
@@ -26,21 +56,21 @@ export function LoginBackground({ variant }: LoginBackgroundProps) {
         />
       </div>
 
-      {/* Floating particles */}
+      {/* Floating particles (rendered only after mount to avoid hydration mismatch) */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-        {[...Array(20)].map((_, i) => (
+        {particles.map((p, i) => (
           <div
             key={i}
-            className={`absolute w-1 h-1 rounded-full opacity-30 animate-float ${
+            className={`absolute rounded-full opacity-30 animate-float ${
               isStudent ? "bg-primary" : "bg-secondary"
             }`}
             style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 5}s`,
-              animationDuration: `${15 + Math.random() * 10}s`,
-              width: `${2 + Math.random() * 4}px`,
-              height: `${2 + Math.random() * 4}px`,
+              left: `${p.left}%`,
+              top: `${p.top}%`,
+              animationDelay: `${p.delay}s`,
+              animationDuration: `${p.duration}s`,
+              width: `${p.size}px`,
+              height: `${p.size}px`,
             }}
           />
         ))}

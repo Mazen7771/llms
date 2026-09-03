@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useState, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
@@ -60,7 +60,6 @@ const EyeOffIcon = ({ className = "" }) => (
 );
 
 function TeacherLoginPageContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/admin";
   const urlError = searchParams.get("error");
@@ -87,21 +86,36 @@ function TeacherLoginPageContent() {
 
     setIsLoading(true);
 
+    // Guard against a hung sign-in request so the button never spins forever.
+    const timeout = new Promise<"timeout">((resolve) =>
+      setTimeout(() => resolve("timeout"), 20000)
+    );
+
     try {
-      const result = await signIn("teacher", {
-        studentId: studentId.trim(),
-        password,
-        redirect: false,
-        callbackUrl,
-      });
+      const result = await Promise.race([
+        signIn("teacher", {
+          studentId: studentId.trim(),
+          password,
+          redirect: false,
+          callbackUrl,
+        }),
+        timeout,
+      ]);
+
+      if (result === "timeout") {
+        setError("Request timed out. Please try again.");
+        return;
+      }
 
       if (result?.error) {
         setError(result.error);
         return;
       }
 
-      router.push(callbackUrl);
-      router.refresh();
+      // Full-page navigation so the freshly-set session cookie is sent on a
+      // fresh document request. The App Router soft-nav (router.push) can fail
+      // to carry the new cookie, leaving the login page stuck on a spinner.
+      window.location.href = result?.url || callbackUrl;
     } catch {
       setError("An unexpected error occurred. Please try again.");
     } finally {

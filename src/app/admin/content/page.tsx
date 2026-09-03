@@ -77,6 +77,56 @@ function getEstimatedTime(type: string, marks: number): number {
   }
 }
 
+// Subject create/edit form. Kept at module scope (not inside the page component)
+// so React doesn't treat it as a new component type on every render, which would
+// unmount/remount the inputs and lose focus after each keystroke.
+function SubjectForm({
+  onSubmit,
+  onCancel,
+  name,
+  slug,
+  onNameChange,
+  onSlugChange,
+  loading,
+  isNew,
+}: {
+  onSubmit: (e: React.FormEvent) => void;
+  onCancel: () => void;
+  name: string;
+  slug: string;
+  onNameChange: (value: string) => void;
+  onSlugChange: (value: string) => void;
+  loading: boolean;
+  isNew: boolean;
+}) {
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <Input
+        id="name"
+        label="Subject Name"
+        value={name}
+        onChange={(e) => onNameChange(e.target.value)}
+        placeholder="e.g., Biology"
+        required
+      />
+      <Input
+        id="slug"
+        label="Slug (URL-friendly)"
+        value={slug}
+        onChange={(e) => onSlugChange(e.target.value)}
+        placeholder="e.g., biology"
+        required
+      />
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" loading={loading}>
+          {isNew ? "Create Subject" : "Save Changes"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 export default function AdminContentPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -146,8 +196,7 @@ export default function AdminContentPage() {
         body: JSON.stringify({ name: newSubjectName.trim(), slug: newSubjectSlug.trim() }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setSubjects([...subjects, data.subject]);
+        fetchSubjects();
         setCreatingSubject(false);
         setNewSubjectName("");
         setNewSubjectSlug("");
@@ -172,8 +221,7 @@ export default function AdminContentPage() {
         body: JSON.stringify({ id: editingSubject.id, name: editSubjectName.trim(), slug: editSubjectSlug.trim() }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setSubjects(subjects.map((s) => (s.id === editingSubject.id ? data.subject : s)));
+        fetchSubjects();
         setEditingSubject(null);
         showToast("success", "Subject updated successfully");
       } else {
@@ -210,10 +258,7 @@ export default function AdminContentPage() {
         body: JSON.stringify({ subjectId, name, orderIndex }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setSubjects(subjects.map((s) =>
-          s.id === subjectId ? { ...s, Unit: [...s.Unit, data.unit].sort((a, b) => a.orderIndex - b.orderIndex) } : s
-        ));
+        fetchSubjects();
         showToast("success", "Unit created successfully");
       } else {
         const data = await res.json();
@@ -232,12 +277,7 @@ export default function AdminContentPage() {
         body: JSON.stringify({ id: unitId, name, orderIndex }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setSubjects(subjects.map((s) =>
-          s.id === subjectId
-            ? { ...s, Unit: s.Unit.map((u) => (u.id === unitId ? data.unit : u)).sort((a, b) => a.orderIndex - b.orderIndex) }
-            : s
-        ));
+        fetchSubjects();
         showToast("success", "Unit updated successfully");
       } else {
         const data = await res.json();
@@ -273,12 +313,7 @@ export default function AdminContentPage() {
         body: JSON.stringify({ unitId, name, orderIndex }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setSubjects(subjects.map((s) =>
-          s.id === subjectId
-            ? { ...s, Unit: s.Unit.map((u) => (u.id === unitId ? { ...u, Topic: [...u.Topic, data.topic].sort((a, b) => a.orderIndex - b.orderIndex) } : u)) }
-            : s
-        ));
+        fetchSubjects();
         showToast("success", "Topic created successfully");
       } else {
         const data = await res.json();
@@ -297,19 +332,7 @@ export default function AdminContentPage() {
         body: JSON.stringify({ id: topicId, name, orderIndex }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setSubjects(subjects.map((s) =>
-          s.id === subjectId
-            ? {
-                ...s,
-                Unit: s.Unit.map((u) =>
-                  u.id === unitId
-                    ? { ...u, Topic: u.Topic.map((t) => (t.id === topicId ? data.topic : t)).sort((a, b) => a.orderIndex - b.orderIndex) }
-                    : u
-                ),
-              }
-            : s
-        ));
+        fetchSubjects();
         showToast("success", "Topic updated successfully");
       } else {
         const data = await res.json();
@@ -380,6 +403,14 @@ export default function AdminContentPage() {
       });
     }
   }, []);
+
+  // Load resources & recordings for the currently expanded topic
+  useEffect(() => {
+    if (expandedTopic) {
+      fetchResources(expandedTopic);
+      fetchRecordings(expandedTopic);
+    }
+  }, [expandedTopic, fetchResources, fetchRecordings]);
 
   // Upload resource file with progress tracking
   const uploadResourceFile = async (file: File, onProgress?: (progress: number) => void): Promise<{ fileKey: string; fileType: string; fileSize: number } | null> => {
@@ -630,33 +661,6 @@ export default function AdminContentPage() {
     }
   };
 
-  const SubjectForm = ({ subject, onSubmit, onCancel, name, slug, loading, isNew }: any) => (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <Input
-        id="name"
-        label="Subject Name"
-        value={name}
-        onChange={(e) => isNew ? setNewSubjectName(e.target.value) : setEditSubjectName(e.target.value)}
-        placeholder="e.g., Biology"
-        required
-      />
-      <Input
-        id="slug"
-        label="Slug (URL-friendly)"
-        value={slug}
-        onChange={(e) => isNew ? setNewSubjectSlug(e.target.value) : setEditSubjectSlug(e.target.value)}
-        placeholder="e.g., biology"
-        required
-      />
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
-        <Button type="submit" loading={loading}>
-          {isNew ? "Create Subject" : "Save Changes"}
-        </Button>
-      </div>
-    </form>
-  );
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -680,6 +684,8 @@ export default function AdminContentPage() {
               onCancel={() => setCreatingSubject(false)}
               name={newSubjectName}
               slug={newSubjectSlug}
+              onNameChange={setNewSubjectName}
+              onSlugChange={setNewSubjectSlug}
               loading={false}
               isNew={true}
             />
@@ -751,6 +757,8 @@ export default function AdminContentPage() {
                     onCancel={() => setEditingSubject(null)}
                     name={editSubjectName}
                     slug={editSubjectSlug}
+                    onNameChange={setEditSubjectName}
+                    onSlugChange={setEditSubjectSlug}
                     loading={false}
                     isNew={false}
                   />

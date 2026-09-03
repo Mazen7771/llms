@@ -5,7 +5,9 @@ import bcrypt from "bcryptjs";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password, name, role, studentId } = body;
+    // Security: self-registration is always a STUDENT account. `role` is
+    // intentionally ignored so a caller cannot mint a TEACHER account.
+    const { email, password, name, studentId } = body;
 
     if (!email || !password) {
       return NextResponse.json(
@@ -29,14 +31,14 @@ export async function POST(request: NextRequest) {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Create user (students only for self-registration)
+    // Create user (always STUDENT for self-registration — role is locked)
     const user = await prisma.user.create({
       data: {
         id: crypto.randomUUID(),
         email,
         passwordHash,
         name,
-        role: role || "STUDENT",
+        role: "STUDENT",
         studentId: studentId || null,
         accountStatus: "ACTIVE",
         updatedAt: new Date(),

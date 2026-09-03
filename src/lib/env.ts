@@ -24,6 +24,9 @@ interface EnvConfig {
   AWS_S3_BUCKET?: string;
   AWS_S3_ENDPOINT?: string;
   NEXT_PUBLIC_APP_URL?: string;
+  AI_PROVIDER?: string;
+  GEMINI_API_KEY?: string;
+  DEEPSEEK_API_KEY?: string;
 }
 
 function validateEnv(): EnvConfig {
@@ -105,6 +108,9 @@ function validateEnv(): EnvConfig {
     "AWS_S3_BUCKET",
     "AWS_S3_ENDPOINT",
     "NEXT_PUBLIC_APP_URL",
+    "AI_PROVIDER",
+    "GEMINI_API_KEY",
+    "DEEPSEEK_API_KEY",
   ] as const;
 
   for (const key of optionalVars) {

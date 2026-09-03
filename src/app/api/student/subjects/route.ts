@@ -16,7 +16,15 @@ export async function GET() {
         Unit: {
           orderBy: { orderIndex: "asc" },
           include: {
-            Topic: { orderBy: { orderIndex: "asc" } },
+            Topic: {
+              orderBy: { orderIndex: "asc" },
+              include: {
+                // Include the calling student's progress so the dashboard
+                // can show real completion per topic.
+                Progress: { where: { studentId: session.user.id } },
+                _count: { select: { Recording: true, Quiz: true } },
+              },
+            },
             _count: { select: { Topic: true } },
           },
         },

@@ -19,13 +19,24 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
     fetch("/api/user/notifications")
-      .then((res) => res.json())
-      .then((data) => {
-        setNotifications(data);
-        setLoading(false);
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+        return res.json();
       })
-      .catch(() => setLoading(false));
+      .then((data: { notifications?: Notification[] }) => {
+        if (mounted) {
+          setNotifications(data.notifications ?? []);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleMarkRead = async (id: string) => {

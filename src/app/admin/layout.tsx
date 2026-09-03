@@ -51,6 +51,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (status === "authenticated" && session?.user?.role !== "TEACHER") {
       router.push("/dashboard");
+    } else if (status === "unauthenticated") {
+      router.push("/login/teacher");
     }
   }, [status, session, router]);
 
@@ -62,8 +64,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  if (status === "unauthenticated" || session?.user?.role !== "TEACHER") {
-    return null;
+  if (status === "unauthenticated") {
+    return null; // middleware + useEffect will redirect to /login/teacher
+  }
+
+  if (session?.user?.role !== "TEACHER") {
+    return null; // non-teacher is dangling only in the brief window before the redirect
   }
 
   return (

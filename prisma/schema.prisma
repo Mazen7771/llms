@@ -193,6 +193,18 @@ model StudentAnswer {
   @@index([questionId])
 }
 
+// Simple key-value store for persistent settings (admin + user preferences).
+// Key is namespaced, e.g. "general.siteName", "appearance.theme",
+// "notifications.emailEnabled", "user:<id>.theme". Value is stored as JSON
+// text so it can hold strings, booleans, or nested objects.
+model Setting {
+  id        String   @id
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
 model Subject {
   id        String   @id
   name      String   @unique

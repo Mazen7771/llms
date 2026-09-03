@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
+import { buildPublicUrl } from "@/lib/upload";
+import { buildPlayerUrl } from "@/lib/cloudflare-stream";
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,7 +35,19 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "Topic not found" }, { status: 404 });
       }
 
-      return NextResponse.json({ topic });
+      const enrichedTopic = {
+        ...topic,
+        Resource: topic.Resource.map((r) => ({
+          ...r,
+          publicUrl: buildPublicUrl(r.fileKey),
+        })),
+        Recording: topic.Recording.map((rec) => ({
+          ...rec,
+          playerUrl: buildPlayerUrl(rec.streamVideoId),
+        })),
+      };
+
+      return NextResponse.json({ topic: enrichedTopic });
     }
 
     if (unitId) {
@@ -48,7 +62,19 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      return NextResponse.json({ topics });
+      const enrichedTopics = topics.map((t) => ({
+        ...t,
+        Resource: t.Resource.map((r) => ({
+          ...r,
+          publicUrl: buildPublicUrl(r.fileKey),
+        })),
+        Recording: t.Recording.map((rec) => ({
+          ...rec,
+          playerUrl: buildPlayerUrl(rec.streamVideoId),
+        })),
+      }));
+
+      return NextResponse.json({ topics: enrichedTopics });
     }
 
     return NextResponse.json({ error: "Unit ID or Topic ID required" }, { status: 400 });

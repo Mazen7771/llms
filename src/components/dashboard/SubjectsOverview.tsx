@@ -14,26 +14,31 @@ interface TopicProgress {
 interface Topic {
   id: string;
   name: string;
-  slug: string;
   orderIndex: number;
-  recordingsCount: number;
-  hasQuiz: boolean;
-  progress?: TopicProgress;
+  Progress: TopicProgress[];
+  _count: { Recording: number; Quiz: number };
 }
 
 interface Unit {
   id: string;
   name: string;
-  slug: string;
   orderIndex: number;
   topics: Topic[];
+  totalTopics: number;
+  completedTopics: number;
+  progress: number;
 }
 
-interface SubjectData {
+interface RawSubject {
   id: string;
   name: string;
   slug: string;
-  units: Record<string, Unit>;
+  units: Array<{
+    id: string;
+    name: string;
+    orderIndex: number;
+    topics: Topic[];
+  }>;
 }
 
 interface SubjectWithProgress {
@@ -41,15 +46,7 @@ interface SubjectWithProgress {
   name: string;
   slug: string;
   icon: string;
-  units: Array<{
-    id: string;
-    name: string;
-    orderIndex: number;
-    topics: Array<Topic & { isCompleted: boolean; progress: TopicProgress }>;
-    totalTopics: number;
-    completedTopics: number;
-    progress: number;
-  }>;
+  units: Unit[];
   totalTopics: number;
   completedTopics: number;
   overallProgress: number;
@@ -58,61 +55,89 @@ interface SubjectWithProgress {
 export function SubjectsOverview() {
   const [subjects, setSubjects] = useState<SubjectWithProgress[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/student/topics')
-      .then((res) => res.json())
-      .then((data: SubjectData[]) => {
-        const subjectsWithProgress = data.map((subject) => {
-          const units = Object.values(subject.units);
+    let mounted = true;
+
+    fetch("/api/student/subjects")
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+        return res.json();
+      })
+      .then((data: { subjects?: RawSubject[] }) => {
+        const rawSubjects = data.subjects ?? [];
+        const subjectsWithProgress = rawSubjects.map((subject) => {
           let totalTopics = 0;
           let completedTopics = 0;
-          const unitsWithProgress = units.map((unit) => {
-            const topicsWithProgress = unit.topics.map((topic) => {
+
+          const units: Unit[] = (subject.units ?? []).map((unit) => {
+            const topicsWithProgress = (unit.topics ?? []).map((topic) => {
               totalTopics++;
-              const isCompleted = topic.progress?.lessonViewed &&
-                (topic.recordingsCount === 0 || topic.progress?.recordingWatched) &&
-                (!topic.hasQuiz || topic.progress?.quizCompleted);
+              const progress = topic.Progress?.[0];
+              const isCompleted =
+                !!progress?.lessonViewed &&
+                (topic._count?.Recording === 0 || !!progress?.recordingWatched) &&
+                (topic._count?.Quiz === 0 || !!progress?.quizCompleted);
               if (isCompleted) completedTopics++;
-              return {
-                ...topic,
-                isCompleted: !!isCompleted,
-                progress: topic.progress || {
-                  lessonViewed: false,
-                  recordingWatched: false,
-                  quizCompleted: false
-                }
-              };
+              return topic;
             });
-            const unitCompleted = topicsWithProgress.filter((t) => t.isCompleted).length;
+
+            const unitCompleted = topicsWithProgress.filter((t) => {
+              const p = t.Progress?.[0];
+              return (
+                !!p?.lessonViewed &&
+                (t._count?.Recording === 0 || !!p?.recordingWatched) &&
+                (t._count?.Quiz === 0 || !!p?.quizCompleted)
+              );
+            }).length;
+
             return {
-              ...unit,
+              id: unit.id,
+              name: unit.name,
+              orderIndex: unit.orderIndex,
               topics: topicsWithProgress.sort((a, b) => a.orderIndex - b.orderIndex),
               totalTopics: topicsWithProgress.length,
               completedTopics: unitCompleted,
-              progress: topicsWithProgress.length > 0 ? Math.round(unitCompleted / topicsWithProgress.length * 100) : 0
+              progress:
+                topicsWithProgress.length > 0
+                  ? Math.round((unitCompleted / topicsWithProgress.length) * 100)
+                  : 0,
             };
           });
+
           return {
             id: subject.id,
             name: subject.name,
             slug: subject.slug,
-            icon: subject.slug === 'biology' ? '🧬' : '⚗️',
-            units: unitsWithProgress.sort((a, b) => a.orderIndex - b.orderIndex),
+            icon: subject.slug === "biology" ? "🧬" : "⚗️",
+            units: units.sort((a, b) => a.orderIndex - b.orderIndex),
             totalTopics,
             completedTopics,
-            overallProgress: totalTopics > 0 ? Math.round(completedTopics / totalTopics * 100) : 0
+            overallProgress: totalTopics > 0 ? Math.round((completedTopics / totalTopics) * 100) : 0,
           };
         });
-        setSubjects(subjectsWithProgress);
-        setLoading(false);
+
+        if (mounted) {
+          setSubjects(subjectsWithProgress);
+          setLoading(false);
+        }
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        if (mounted) {
+          setError("Failed to load your subjects. Please try again.");
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   if (loading) {
     return (
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3" aria-busy="true">
         {[1, 2].map((i) => (
           <Card key={i} variant="elevated" padding="lg" className="animate-pulse">
             <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-4" />
@@ -120,6 +145,16 @@ export function SubjectsOverview() {
             <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-full" />
           </Card>
         ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-5xl mb-4" aria-hidden="true">⚠️</div>
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Something went wrong</h2>
+        <p className="text-gray-600 dark:text-gray-400">{error}</p>
       </div>
     );
   }
@@ -139,7 +174,7 @@ export function SubjectsOverview() {
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
       {subjects.map((subject) => (
-        <Link key={subject.id} href={`/dashboard/${subject.slug}`} className="group">
+        <Link key={subject.id} href={`/dashboard/content`} className="group">
           <Card variant="interactive" padding="lg">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -147,7 +182,7 @@ export function SubjectsOverview() {
                 <div>
                   <h3 className="text-xl font-bold text-gray-900 dark:text-white">{subject.name}</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {subject.totalTopics} topics across {Object.keys(subject.units).length} units
+                    {subject.totalTopics} topics across {subject.units.length} units
                   </p>
                 </div>
               </div>
@@ -160,7 +195,7 @@ export function SubjectsOverview() {
             </div>
             <Progress value={subject.overallProgress} size="md" showLabel={false} className="mb-4" />
             <div className="space-y-2">
-              {Object.values(subject.units).slice(0, 3).map((unit) => (
+              {subject.units.slice(0, 3).map((unit) => (
                 <div key={unit.id} className="flex items-center justify-between text-sm">
                   <span className="text-gray-600 dark:text-gray-400 truncate pr-2">{unit.name}</span>
                   <div className="flex items-center gap-2">
@@ -171,9 +206,9 @@ export function SubjectsOverview() {
                   </div>
                 </div>
               ))}
-              {Object.keys(subject.units).length > 3 && (
+              {subject.units.length > 3 && (
                 <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                  +{Object.keys(subject.units).length - 3} more units
+                  +{subject.units.length - 3} more units
                 </p>
               )}
             </div>

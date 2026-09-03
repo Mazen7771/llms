@@ -70,6 +70,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (status === "authenticated" && session?.user?.role === "TEACHER") {
       router.push("/admin");
+    } else if (status === "unauthenticated") {
+      router.push("/login/student");
     }
   }, [status, session, router]);
 
@@ -81,8 +83,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  if (status === "unauthenticated" || session?.user?.role === "TEACHER") {
-    return null;
+  if (status === "unauthenticated") {
+    return null; // middleware + useEffect will redirect to /login/student
+  }
+
+  if (session?.user?.role === "TEACHER") {
+    return null; // teacher is dangling only in the brief window before the redirect
   }
 
   return (

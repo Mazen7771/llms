@@ -18,8 +18,8 @@ interface Student {
   email: string;
   accountStatus: "ACTIVE" | "DISABLED";
   _count: {
-    progress: number;
-    quizAttempts: number;
+    Progress: number;
+    QuizAttempt: number;
   };
   createdAt: string;
 }
@@ -32,10 +32,11 @@ function AdminStudentsPageContent() {
 
   const fetchStudents = async () => {
     try {
-      const res = await fetch("/api/admin/students");
+      // Fetch all students for management (the UI does client-side filtering).
+      const res = await fetch("/api/admin/students?limit=1000");
       if (res.ok) {
         const data = await res.json();
-        setStudents(data);
+        setStudents(data.students ?? []);
       }
     } catch (err) {
       console.error("Failed to fetch students:", err);
@@ -194,8 +195,8 @@ function AdminStudentsPageContent() {
                             {isActive ? "Active" : "Disabled"}
                           </Badge>
                         </TableCell>
-                        <TableCell>{student._count.progress}</TableCell>
-                        <TableCell>{student._count.quizAttempts}</TableCell>
+                        <TableCell>{student._count.Progress}</TableCell>
+                        <TableCell>{student._count.QuizAttempt}</TableCell>
                         <TableCell>{formatDate(student.createdAt)}</TableCell>
                         <TableCell className="text-right">
                           <Button

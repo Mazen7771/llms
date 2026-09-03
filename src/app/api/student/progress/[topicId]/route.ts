@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
+import { buildPublicUrl } from "@/lib/upload";
+import { buildPlayerUrl } from "@/lib/cloudflare-stream";
 
 export async function GET(
   request: NextRequest,
@@ -45,8 +47,21 @@ export async function GET(
       include: { Quiz: true },
     });
 
+    // Enrich resources and recordings with URLs
+    const enrichedTopic = {
+      ...topic,
+      Resource: topic.Resource.map((r) => ({
+        ...r,
+        publicUrl: buildPublicUrl(r.fileKey),
+      })),
+      Recording: topic.Recording.map((rec) => ({
+        ...rec,
+        playerUrl: buildPlayerUrl(rec.streamVideoId),
+      })),
+    };
+
     return NextResponse.json({
-      topic,
+      topic: enrichedTopic,
       progress,
       quizAttempts,
     });

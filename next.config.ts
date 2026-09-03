@@ -10,6 +10,12 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '*.r2.cloudflarestorage.com' },
     ],
   },
+  // Pin Turbopack's module-resolution root to this project. A stray
+  // package-lock.json in a parent directory would otherwise make Turbopack
+  // treat that parent as the root and fail to resolve project dependencies.
+  turbopack: {
+    root: process.cwd(),
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',

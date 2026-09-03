@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
+import { buildPublicUrl } from "@/lib/upload";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,7 +24,12 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ resources });
+    const withUrls = resources.map((r) => ({
+      ...r,
+      publicUrl: buildPublicUrl(r.fileKey),
+    }));
+
+    return NextResponse.json({ resources: withUrls });
   } catch (error) {
     console.error("Admin resources error:", error);
     return NextResponse.json({ error: "Failed to fetch resources" }, { status: 500 });

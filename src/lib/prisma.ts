@@ -36,8 +36,15 @@ export const prisma =
     log: isProduction ? ["error"] : ["query", "error", "warn"],
   });
 
-if (!isProduction) {
+// Cache both the pool and client on globalThis in ALL environments.
+// In production (Vercel serverless), a fresh pool per cold start can
+// open many new connections under concurrency and exhaust Postgres's
+// connection limit, causing intermittent 500s. The serverless process
+// is reused across warm invocations, so caching here is safe.
+if (!globalForPrisma.prisma) {
   globalForPrisma.prisma = prisma;
+}
+if (!globalForPrisma.pool) {
   globalForPrisma.pool = pool;
 }
 

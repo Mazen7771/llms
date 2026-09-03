@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
+import { buildPlayerUrl } from "@/lib/cloudflare-stream";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,7 +24,12 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ recordings });
+    const withUrls = recordings.map((rec) => ({
+      ...rec,
+      playerUrl: buildPlayerUrl(rec.streamVideoId),
+    }));
+
+    return NextResponse.json({ recordings: withUrls });
   } catch (error) {
     console.error("Admin recordings error:", error);
     return NextResponse.json({ error: "Failed to fetch recordings" }, { status: 500 });

@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   description: "A modern learning management system for students and teachers",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"

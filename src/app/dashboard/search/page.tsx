@@ -1,29 +1,73 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { Search, X } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
 
+type ResultType = "subject" | "unit" | "topic" | "resource" | "recording" | "quiz";
+
 interface SearchResult {
-  type: "subject" | "unit" | "topic" | "resource" | "recording" | "quiz";
+  type: ResultType;
   id: string;
   title: string;
   description?: string;
   subjectName?: string;
   unitName?: string;
   topicName?: string;
+  href: string;
+}
+
+interface RawResults {
+  subjects?: Array<{ id: string; name: string; slug: string }>;
+  topics?: Array<{
+    id: string;
+    name: string;
+    Unit?: { name?: string; Subject?: { name?: string; slug?: string } };
+  }>;
+  quizzes?: Array<{
+    id: string;
+    title: string;
+    Topic?: { name?: string; Unit?: { name?: string; Subject?: { name?: string } } };
+  }>;
+  recordings?: Array<{
+    id: string;
+    title: string;
+    description?: string | null;
+    Topic?: { name?: string; Unit?: { name?: string; Subject?: { name?: string } } };
+  }>;
+  resources?: Array<{
+    id: string;
+    title: string;
+    description?: string | null;
+    fileType?: string | null;
+    Topic?: { name?: string; Unit?: { name?: string; Subject?: { name?: string } } };
+  }>;
+}
+
+function topicNames(t: { name?: string; Unit?: { name?: string; Subject?: { name?: string } } } | undefined) {
+  return {
+    topicName: t?.name,
+    unitName: t?.Unit?.name,
+    subjectName: t?.Unit?.Subject?.name,
+  };
 }
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
 
   useEffect(() => {
-    const stored = localStorage.getItem("recentSearches");
-    if (stored) setRecentSearches(JSON.parse(stored));
+    try {
+      const stored = localStorage.getItem("recentSearches");
+      if (stored) setRecentSearches(JSON.parse(stored));
+    } catch {
+      // ignore corrupt localStorage
+    }
   }, []);
 
   const handleSearch = async (searchQuery: string) => {
@@ -33,16 +77,64 @@ export default function SearchPage() {
     }
 
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
-      const data = await res.json();
-      setResults(data);
+      if (!res.ok) throw new Error(`Search failed (${res.status})`);
+      const data: { results?: RawResults } = await res.json();
+      const raw = data.results ?? {};
 
-      // Save to recent searches
+      const normalized: SearchResult[] = [
+        ...(raw.subjects ?? []).map((s) => ({
+          type: "subject" as ResultType,
+          id: `subject-${s.id}`,
+          title: s.name,
+          subjectName: s.name,
+          href: `/dashboard/content`,
+        })),
+        ...(raw.topics ?? []).map((t) => ({
+          type: "topic" as ResultType,
+          id: `topic-${t.id}`,
+          title: t.name,
+          ...topicNames(t),
+          href: `/dashboard/content`,
+        })),
+        ...(raw.quizzes ?? []).map((q) => ({
+          type: "quiz" as ResultType,
+          id: `quiz-${q.id}`,
+          title: q.title,
+          ...topicNames(q.Topic),
+          href: `/dashboard/quizzes`,
+        })),
+        ...(raw.recordings ?? []).map((r) => ({
+          type: "recording" as ResultType,
+          id: `recording-${r.id}`,
+          title: r.title,
+          description: r.description ?? undefined,
+          ...topicNames(r.Topic),
+          href: `/dashboard/content`,
+        })),
+        ...(raw.resources ?? []).map((r) => ({
+          type: "resource" as ResultType,
+          id: `resource-${r.id}`,
+          title: r.title,
+          description: r.description ?? undefined,
+          ...topicNames(r.Topic),
+          href: `/dashboard/content`,
+        })),
+      ];
+
+      setResults(normalized);
+
       const updated = [searchQuery, ...recentSearches.filter((s) => s !== searchQuery)].slice(0, 5);
       setRecentSearches(updated);
-      localStorage.setItem("recentSearches", JSON.stringify(updated));
-    } catch {
+      try {
+        localStorage.setItem("recentSearches", JSON.stringify(updated));
+      } catch {
+        // ignore storage errors
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Search failed. Please try again.");
       setResults([]);
     } finally {
       setLoading(false);
@@ -52,6 +144,7 @@ export default function SearchPage() {
   const handleClear = () => {
     setQuery("");
     setResults([]);
+    setError(null);
   };
 
   const getTypeIcon = (type: SearchResult["type"]) => {
@@ -104,7 +197,13 @@ export default function SearchPage() {
           {loading && <div className="mt-2 h-2 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse w-1/4" />}
         </GlassCard>
 
-        {query && results.length === 0 && !loading && (
+        {error && (
+          <GlassCard variant="default" padding="md" className="text-center text-red-600 dark:text-red-400">
+            {error}
+          </GlassCard>
+        )}
+
+        {query && !error && results.length === 0 && !loading && (
           <GlassCard variant="default" padding="xl" className="text-center">
             <Search className="w-16 h-16 mx-auto text-gray-400 dark:text-gray-500 mb-4" />
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No results found</h2>
@@ -147,9 +246,12 @@ export default function SearchPage() {
                     )}
                   </div>
                 </div>
-                <Button variant="outline" size="sm">
+                <Link
+                  href={result.href}
+                  className="inline-flex items-center justify-center font-medium rounded-lg px-3 py-1.5 text-sm gap-1.5 border border-gray-300 dark:border-gray-600 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200"
+                >
                   View
-                </Button>
+                </Link>
               </GlassCard>
             ))}
           </div>

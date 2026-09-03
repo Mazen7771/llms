@@ -57,6 +57,41 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user || session.user.role !== "TEACHER") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { studentId, action } = body;
+
+    if (!studentId || !["enable", "disable"].includes(action)) {
+      return NextResponse.json(
+        { error: "studentId and action (enable|disable) are required" },
+        { status: 400 }
+      );
+    }
+
+    const accountStatus = action === "enable" ? "ACTIVE" : "DISABLED";
+
+    const updated = await prisma.user.updateMany({
+      where: { studentId, role: "STUDENT" },
+      data: { accountStatus },
+    });
+
+    if (updated.count === 0) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ studentId, accountStatus });
+  } catch (error) {
+    console.error("Update student status error:", error);
+    return NextResponse.json({ error: "Failed to update student status" }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);

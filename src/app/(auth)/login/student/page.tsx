@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useState, Suspense } from "react";
-import { signIn } from "next-auth/react";
+import { getCsrfToken } from "next-auth/react";
 import Link from "next/link";
 import { PremiumButton } from "@/components/ui/PremiumButton";
 import { PremiumInput } from "@/components/ui/PremiumInput";
@@ -89,39 +89,40 @@ function StudentLoginPageContent() {
 
     setIsLoading(true);
 
-    // Guard against a hung sign-in request so the button never spins forever.
-    const timeout = new Promise<"timeout">((resolve) =>
-      setTimeout(() => resolve("timeout"), 20000)
-    );
-
+    // Use a native form POST to the NextAuth callback instead of signIn().
+    // NextAuth's signIn() helper does a JS fetch to the callback, which can hang
+    // in this Next.js 16 / NextAuth v4 setup and leave the button spinning
+    // forever. A native submission lets the browser handle the request and the
+    // 302 redirect itself, so the session cookie is set and navigation always
+    // completes. Failed credentials redirect to this page with ?error=..., which
+    // is rendered from `urlError` above.
     try {
-      const result = await Promise.race([
-        signIn("student", {
-          studentId: studentId.trim(),
-          password,
-          redirect: false,
-          callbackUrl,
-        }),
-        timeout,
-      ]);
-
-      if (result === "timeout") {
-        setError("Request timed out. Please try again.");
+      const csrfToken = await getCsrfToken();
+      if (!csrfToken) {
+        setError("Could not start sign-in. Please try again.");
+        setIsLoading(false);
         return;
       }
 
-      if (result?.error) {
-        setError(result.error);
-        return;
-      }
-
-      // Full-page navigation so the freshly-set session cookie is sent on a
-      // fresh document request. The App Router soft-nav (router.push) can fail
-      // to carry the new cookie, leaving the login page stuck on a spinner.
-      window.location.href = result?.url || callbackUrl;
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = "/api/auth/callback/student";
+      const add = (name: string, value: string) => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+      };
+      add("csrfToken", csrfToken);
+      add("studentId", studentId.trim());
+      add("password", password);
+      add("callbackUrl", callbackUrl);
+      document.body.appendChild(form);
+      form.submit();
+      // The browser navigates away; isLoading intentionally stays true.
     } catch {
       setError("An unexpected error occurred. Please try again.");
-    } finally {
       setIsLoading(false);
     }
   };

@@ -12,23 +12,9 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
-    const topicId = formData.get("topicId") as string | null;
-    const type = formData.get("type") as string | null;
-    const title = formData.get("title") as string | null;
-    const description = formData.get("description") as string | null;
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
-    }
-
-    if (!topicId || !type || !title) {
-      return NextResponse.json({ error: "Missing required fields: topicId, type, title" }, { status: 400 });
-    }
-
-    // Validate resource type
-    const validTypes = ["LESSON", "NOTE", "WORKSHEET", "SAVE_MY_EXAM", "RESOURCE"];
-    if (!validTypes.includes(type)) {
-      return NextResponse.json({ error: "Invalid resource type" }, { status: 400 });
     }
 
     // Upload to Vercel Blob

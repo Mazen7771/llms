@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,19 +18,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // Upload to Vercel Blob
-    const blob = await put(file.name, file, {
-      access: "public",
-      addRandomSuffix: true,
+    // Prefer Vercel Blob when it's configured on the deployment; otherwise
+    // store the raw bytes in the UploadedFile table so uploads work even
+    // without a BLOB_READ_WRITE_TOKEN (Blob not attached to the project).
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      const blob = await put(file.name, file, {
+        access: "public",
+        addRandomSuffix: true,
+      });
+
+      // Return file info for the resources API
+      return NextResponse.json({
+        fileKey: blob.url, // Using the blob URL as fileKey
+        fileType: file.type || "application/octet-stream",
+        fileSize: file.size,
+        url: blob.url,
+        pathname: blob.pathname,
+      });
+    }
+
+    // Fallback: persist the bytes in the DB and return the row key as
+    // fileKey. /api/files/[...path] serves these bytes back for the key.
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const key = crypto.randomUUID();
+    await prisma.uploadedFile.create({
+      data: {
+        key,
+        data: bytes,
+        contentType: file.type || "application/octet-stream",
+        size: file.size,
+      },
     });
 
-    // Return file info for the resources API
     return NextResponse.json({
-      fileKey: blob.url, // Using the blob URL as fileKey
+      fileKey: key,
       fileType: file.type || "application/octet-stream",
       fileSize: file.size,
-      url: blob.url,
-      pathname: blob.pathname,
+      url: key,
+      pathname: file.name,
     });
   } catch (error) {
     console.error("File upload error:", error);

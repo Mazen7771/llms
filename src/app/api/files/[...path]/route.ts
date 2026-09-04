@@ -51,6 +51,28 @@ export async function GET(
       // If you add subject restrictions later, add check here
     }
 
+    // DB-backed files (uploaded without Vercel Blob) use a plain key with no
+    // URL scheme. Serve the stored bytes directly instead of fetching a URL.
+    if (!/^[a-z][a-z0-9+.-]*:/.test(blobUrl)) {
+      const stored = await prisma.uploadedFile.findUnique({ where: { key: blobUrl } });
+      if (stored) {
+        const headers = new Headers();
+        headers.set("Content-Type", stored.contentType);
+        headers.set("Content-Length", stored.data.length.toString());
+        headers.set("Cache-Control", "public, max-age=31536000, immutable");
+        headers.set("X-Content-Type-Options", "nosniff");
+        headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+        if (download) {
+          headers.set("Content-Disposition", `attachment; filename="file"`);
+        } else {
+          headers.set("Content-Disposition", `inline; filename="file"`);
+        }
+        return new NextResponse(stored.data, { status: 200, headers });
+      }
+      // Unknown key that isn't a URL — nothing to fetch.
+      return NextResponse.json({ error: "File not found" }, { status: 404 });
+    }
+
     // Fetch the file from Vercel Blob
     const response = await fetch(blobUrl);
 
@@ -122,6 +144,20 @@ export async function HEAD(
       blobUrl = filePath;
     } else {
       blobUrl = filePath;
+    }
+
+    // DB-backed files: report stored metadata without fetching a URL.
+    if (!/^[a-z][a-z0-9+.-]*:/.test(blobUrl)) {
+      const stored = await prisma.uploadedFile.findUnique({ where: { key: blobUrl } });
+      if (!stored) {
+        return new NextResponse(null, { status: 404 });
+      }
+      const headers = new Headers();
+      headers.set("Content-Type", stored.contentType);
+      headers.set("Content-Length", stored.data.length.toString());
+      headers.set("Cache-Control", "public, max-age=31536000, immutable");
+      headers.set("X-Content-Type-Options", "nosniff");
+      return new NextResponse(null, { status: 200, headers });
     }
 
     const response = await fetch(blobUrl, { method: "HEAD" });

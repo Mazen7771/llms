@@ -177,6 +177,19 @@ model Resource {
   @@index([type])
 }
 
+// Fallback file storage used when Vercel Blob isn't configured on the
+// deployment (no BLOB_READ_WRITE_TOKEN). /api/upload stores the raw bytes
+// here keyed by a UUID and returns that key as the resource's fileKey;
+// /api/files serves the bytes back. Keeping it as a separate table lets the
+// bytes survive the two-step upload → create-resource flow.
+model UploadedFile {
+  key         String   @id
+  data        Bytes
+  contentType String
+  size        Int
+  createdAt   DateTime @default(now())
+}
+
 model StudentAnswer {
   id               String      @id
   attemptId        String

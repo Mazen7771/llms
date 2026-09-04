@@ -412,22 +412,18 @@ export default function AdminContentPage() {
     }
   }, [expandedTopic, fetchResources, fetchRecordings]);
 
-  // Upload resource file with progress tracking
+  // Upload resource file with progress tracking. Files larger than the chunk
+  // threshold are split into ordered chunks so each request stays under
+  // Vercel's ~4.5MB serverless request-body limit; the server reassembles them.
   const uploadResourceFile = async (file: File, onProgress?: (progress: number) => void): Promise<{ fileKey: string; fileType: string; fileSize: number } | null> => {
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      // Use XMLHttpRequest for progress tracking
-      return await new Promise((resolve, reject) => {
+    const CHUNK_SIZE = 3 * 1024 * 1024; // 3MB, safely under the ~4.5MB limit
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+    // Generic XHR POST used for chunked uploads.
+    const postForm = (formData: FormData) =>
+      new Promise<any>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "/api/upload");
-
-        xhr.upload.addEventListener("progress", (event) => {
-          if (event.lengthComputable && onProgress) {
-            onProgress(Math.round((event.loaded / event.total) * 100));
-          }
-        });
-
         xhr.addEventListener("load", () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
@@ -439,12 +435,72 @@ export default function AdminContentPage() {
             resolve(null);
           }
         });
-
         xhr.addEventListener("error", () => reject(new Error("Upload failed")));
         xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
-
         xhr.send(formData);
       });
+
+    try {
+      // Small files: single request with upload progress (original behavior).
+      if (totalChunks <= 1) {
+        const formData = new FormData();
+        formData.append("file", file);
+        return await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", "/api/upload");
+          xhr.upload.addEventListener("progress", (event) => {
+            if (event.lengthComputable && onProgress) {
+              onProgress(Math.round((event.loaded / event.total) * 100));
+            }
+          });
+          xhr.addEventListener("load", () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                resolve(JSON.parse(xhr.responseText));
+              } catch {
+                resolve(null);
+              }
+            } else {
+              resolve(null);
+            }
+          });
+          xhr.addEventListener("error", () => reject(new Error("Upload failed")));
+          xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
+          xhr.send(formData);
+        });
+      }
+
+      // Large files: upload chunks in order; the last one triggers reassembly
+      // and returns { fileKey, fileType, fileSize }.
+      const uploadKey = crypto.randomUUID();
+      let uploadedBytes = 0;
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(file.size, start + CHUNK_SIZE);
+        const chunk = file.slice(start, end);
+
+        const formData = new FormData();
+        formData.append("file", chunk);
+        formData.append("key", uploadKey);
+        formData.append("index", String(i));
+        formData.append("total", String(totalChunks));
+        formData.append("name", file.name);
+        formData.append("type", file.type || "application/octet-stream");
+        formData.append("finalize", String(i === totalChunks - 1));
+
+        const res = await postForm(formData);
+        if (!res) {
+          return null;
+        }
+        uploadedBytes += end - start;
+        if (onProgress) {
+          onProgress(Math.round((uploadedBytes / file.size) * 100));
+        }
+        if (i === totalChunks - 1) {
+          return res;
+        }
+      }
+      return null;
     } catch (error) {
       console.error("File upload error:", error);
       return null;

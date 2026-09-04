@@ -190,6 +190,22 @@ model UploadedFile {
   createdAt   DateTime @default(now())
 }
 
+// Temporary storage for large-file uploads. The client splits a file into
+// chunks (each under Vercel's ~4.5MB serverless request-body limit) and posts
+// them here keyed by an upload session; the final chunk triggers reassembly
+// into an UploadedFile row. Rows are deleted once reassembly succeeds.
+model UploadChunk {
+  key       String
+  index     Int
+  data      Bytes
+  name      String
+  type      String
+  size      Int
+  createdAt DateTime @default(now())
+
+  @@id([key, index])
+}
+
 model StudentAnswer {
   id               String      @id
   attemptId        String

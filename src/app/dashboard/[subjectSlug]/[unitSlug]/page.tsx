@@ -56,7 +56,13 @@ export default function UnitPage() {
         if (subject) {
           const unitData = Object.values(subject.units).find((u: any) => u.slug === unitSlug);
           if (unitData) {
-            setUnit(unitData as UnitData);
+            // The dashboard API returns units without a nested Subject — attach
+            // it from the subject we just looked up by slug so the breadcrumb
+            // (Subject.slug / Subject.name) renders instead of crashing.
+            setUnit({
+              ...(unitData as UnitData),
+              Subject: { id: subject.id, name: subject.name, slug: subject.slug },
+            });
           } else {
             router.push(`/dashboard/${subjectSlug}`);
           }

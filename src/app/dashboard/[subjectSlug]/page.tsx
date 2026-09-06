@@ -8,21 +8,23 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { Progress } from "@/components/ui/Progress";
 import { Badge } from "@/components/ui/Badge";
 
+interface Topic {
+  id: string;
+  progress?: {
+    lessonViewed: boolean;
+    recordingWatched: boolean;
+    quizCompleted: boolean;
+  };
+  recordingsCount: number;
+  hasQuiz: boolean;
+}
+
 interface Unit {
   id: string;
   name: string;
   slug: string;
   orderIndex: number;
-  topics: Array<{
-    id: string;
-    progress?: {
-      lessonViewed: boolean;
-      recordingWatched: boolean;
-      quizCompleted: boolean;
-    };
-    recordingsCount: number;
-    hasQuiz: boolean;
-  }>;
+  topics: Topic[];
   totalTopics: number;
   completedTopics: number;
   progress: number;
@@ -58,15 +60,37 @@ export default function SubjectPage() {
         const data = await res.json();
         const subjectData = data.subjects.find((s: any) => s.slug === subjectSlug);
         if (subjectData) {
+          // The dashboard API returns raw units/topics without aggregates or an
+          // icon — compute them here (mirrors SubjectsOverview.tsx) so the
+          // subject page shows real counts, progress bars, and an icon.
+          const rawUnits: Unit[] = Object.values(subjectData.units ?? {}) as Unit[];
+          let totalTopics = 0;
+          let completedTopics = 0;
+
+          const units: Record<string, Unit> = {};
+          for (const unit of rawUnits) {
+            const topics = unit.topics;
+            const unitCompleted = topics.filter((t) => isTopicCompleted(t)).length;
+            totalTopics += topics.length;
+            completedTopics += unitCompleted;
+            units[unit.id] = {
+              ...unit,
+              topics,
+              totalTopics: topics.length,
+              completedTopics: unitCompleted,
+              progress: topics.length > 0 ? Math.round((unitCompleted / topics.length) * 100) : 0,
+            };
+          }
+
           setSubject({
             id: subjectData.id,
             name: subjectData.name,
             slug: subjectData.slug,
-            icon: subjectData.icon,
-            units: subjectData.units,
-            totalTopics: subjectData.totalTopics,
-            completedTopics: subjectData.completedTopics,
-            overallProgress: subjectData.overallProgress,
+            icon: subjectData.slug === "biology" ? "🧬" : "⚗️",
+            units,
+            totalTopics,
+            completedTopics,
+            overallProgress: totalTopics > 0 ? Math.round((completedTopics / totalTopics) * 100) : 0,
           });
         } else {
           router.push("/dashboard");
@@ -82,10 +106,10 @@ export default function SubjectPage() {
     }
   };
 
-  const getUnitProgress = (unit: Unit) => {
+  const getUnitProgress = (topics: Topic[]) => {
     let completed = 0;
     let total = 0;
-    Object.values(unit.topics).forEach((topic) => {
+    topics.forEach((topic) => {
       const p = topic.progress || { lessonViewed: false, recordingWatched: false, quizCompleted: false };
       if (p.lessonViewed) completed++;
       total++;
@@ -101,13 +125,15 @@ export default function SubjectPage() {
     return total > 0 ? Math.round((completed / total) * 100) : 0;
   };
 
-  const isUnitCompleted = (unit: Unit) => {
-    return Object.values(unit.topics).every((topic) => {
-      const p = topic.progress || { lessonViewed: false, recordingWatched: false, quizCompleted: false };
-      return p.lessonViewed &&
-        (topic.recordingsCount === 0 || p.recordingWatched) &&
-        (!topic.hasQuiz || p.quizCompleted);
-    });
+  const isTopicCompleted = (topic: Topic) => {
+    const p = topic.progress || { lessonViewed: false, recordingWatched: false, quizCompleted: false };
+    return p.lessonViewed &&
+      (topic.recordingsCount === 0 || p.recordingWatched) &&
+      (!topic.hasQuiz || p.quizCompleted);
+  };
+
+  const isUnitCompleted = (topics: Topic[]) => {
+    return topics.length > 0 && topics.every(isTopicCompleted);
   };
 
   if (loading) {
@@ -181,7 +207,7 @@ export default function SubjectPage() {
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {units.map((unit) => {
             const progress = unit.progress; // This comes from the API
-            const completed = isUnitCompleted(unit);
+            const completed = isUnitCompleted(unit.topics);
 
             return (
               <Link

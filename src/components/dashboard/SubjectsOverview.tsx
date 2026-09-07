@@ -107,7 +107,7 @@ export function SubjectsOverview() {
             id: subject.id,
             name: subject.name,
             slug: subject.slug,
-            icon: subject.slug === "biology" ? "🧬" : "⚗️",
+            icon: subject.name?.toLowerCase().includes("bio") ? "🧬" : "⚗️",
             units: units.sort((a, b) => a.orderIndex - b.orderIndex),
             totalTopics,
             completedTopics,

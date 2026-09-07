@@ -86,7 +86,7 @@ export default function SubjectPage() {
             id: subjectData.id,
             name: subjectData.name,
             slug: subjectData.slug,
-            icon: subjectData.slug === "biology" ? "🧬" : "⚗️",
+            icon: subjectData.name?.toLowerCase().includes("bio") ? "🧬" : "⚗️",
             units,
             totalTopics,
             completedTopics,

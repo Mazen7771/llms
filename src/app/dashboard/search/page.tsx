@@ -35,6 +35,13 @@ export default function SearchPage() {
     }
   }, []);
 
+  // The Unit model has NO slug column, and Subject slugs can contain spaces
+  // (e.g. "Unit 3"). The dashboard API derives a unit slug from the unit name;
+  // mirror that EXACTLY here so search results resolve to the same URLs the
+  // dashboard cards use. Every segment is URL-encoded.
+  const unitSlug = (u: any) => u.name.toLowerCase().replace(/\s+/g, "-");
+  const enc = encodeURIComponent;
+
   // The search API returns { results: { subjects, topics, quizzes, recordings, resources } }.
   // Flatten each bucket into a uniform list with a working navigation URL.
   // Topics have no slug — they are addressed by UUID id in the URL.
@@ -47,7 +54,7 @@ export default function SearchPage() {
         type: "subject",
         id: s.id,
         title: s.name,
-        href: `/dashboard/${s.slug}`,
+        href: `/dashboard/${enc(s.slug)}`,
       });
       (s.Unit || []).forEach((u: any) => {
         push({
@@ -55,7 +62,7 @@ export default function SearchPage() {
           id: u.id,
           title: u.name,
           subjectName: s.name,
-          href: `/dashboard/${s.slug}/${u.slug}`,
+          href: `/dashboard/${enc(s.slug)}/${enc(unitSlug(u))}`,
         });
         (u.Topic || []).forEach((t: any) => {
           push({
@@ -64,7 +71,7 @@ export default function SearchPage() {
             title: t.name,
             subjectName: s.name,
             unitName: u.name,
-            href: `/dashboard/${s.slug}/${u.slug}/${t.id}`,
+            href: `/dashboard/${enc(s.slug)}/${enc(unitSlug(u))}/${t.id}`,
           });
         });
       });
@@ -79,7 +86,7 @@ export default function SearchPage() {
         title: t.name,
         subjectName: subject?.name,
         unitName: unit?.name,
-        href: subject && unit ? `/dashboard/${subject.slug}/${unit.slug}/${t.id}` : "#",
+        href: subject && unit ? `/dashboard/${enc(subject.slug)}/${enc(unitSlug(unit))}/${t.id}` : "#",
       });
     });
 
@@ -108,7 +115,7 @@ export default function SearchPage() {
         subjectName: subject?.name,
         unitName: unit?.name,
         topicName: r.Topic?.name,
-        href: subject && unit && r.Topic ? `/dashboard/${subject.slug}/${unit.slug}/${r.Topic.id}` : "#",
+        href: subject && unit && r.Topic ? `/dashboard/${enc(subject.slug)}/${enc(unitSlug(unit))}/${r.Topic.id}` : "#",
       });
     });
 
@@ -123,7 +130,7 @@ export default function SearchPage() {
         subjectName: subject?.name,
         unitName: unit?.name,
         topicName: r.Topic?.name,
-        href: subject && unit && r.Topic ? `/dashboard/${subject.slug}/${unit.slug}/${r.Topic.id}` : "#",
+        href: subject && unit && r.Topic ? `/dashboard/${enc(subject.slug)}/${enc(unitSlug(unit))}/${r.Topic.id}` : "#",
       });
     });
 

@@ -878,7 +878,7 @@ export default function AdminContentPage() {
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-1">
-                                    <Link href={`/dashboard/${subject.slug}/${unit.slug}/${topic.slug}`} target="_blank" title="View as student" onClick={(e) => e.stopPropagation()}>
+                                    <Link href={`/dashboard/${encodeURIComponent(subject.slug)}/${encodeURIComponent(unit.slug)}/${topic.slug}`} target="_blank" title="View as student" onClick={(e) => e.stopPropagation()}>
                                       <Button variant="ghost" size="icon"><FileText className="w-4 h-4" /></Button>
                                     </Link>
                                     <Button variant="ghost" size="icon" className="text-red-600" onClick={(e) => { e.stopPropagation(); handleDeleteTopic(topic.id, unit.id, subject.id); }} title="Delete Topic">

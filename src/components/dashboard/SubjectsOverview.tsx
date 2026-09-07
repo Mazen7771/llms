@@ -171,7 +171,7 @@ export function SubjectsOverview() {
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
       {subjects.map((subject) => (
-        <Link key={subject.id} href={`/dashboard/${subject.slug}`} className="group">
+        <Link key={subject.id} href={`/dashboard/${encodeURIComponent(subject.slug)}`} className="group">
           <Card variant="interactive" padding="lg">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">

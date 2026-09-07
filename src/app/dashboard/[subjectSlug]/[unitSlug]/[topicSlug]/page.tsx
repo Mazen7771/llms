@@ -205,9 +205,9 @@ export default function TopicDetailPage() {
         <nav className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-6" aria-label="Breadcrumb">
           <Link href="/dashboard" className="hover:text-primary">Dashboard</Link>
           <ChevronLeft className="w-4 h-4" />
-          <Link href={`/dashboard/${Subject.slug}`} className="hover:text-primary">{Subject.name}</Link>
+          <Link href={`/dashboard/${encodeURIComponent(Subject.slug)}`} className="hover:text-primary">{Subject.name}</Link>
           <ChevronLeft className="w-4 h-4" />
-          <Link href={`/dashboard/${Subject.slug}/${Unit.slug}`} className="hover:text-primary">{Unit.name}</Link>
+          <Link href={`/dashboard/${encodeURIComponent(Subject.slug)}/${encodeURIComponent(Unit.slug)}`} className="hover:text-primary">{Unit.name}</Link>
           <ChevronLeft className="w-4 h-4" />
           <span className="text-gray-900 dark:text-white font-medium">{topic.name}</span>
         </nav>

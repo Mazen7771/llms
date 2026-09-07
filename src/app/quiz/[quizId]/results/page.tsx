@@ -189,11 +189,11 @@ export default function QuizResultsPage() {
             <nav className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 flex-1 min-w-0 overflow-hidden" aria-label="Breadcrumb">
               <Link href="/dashboard" className="hover:text-primary truncate">Dashboard</Link>
               <ChevronLeft className="w-4 h-4 flex-shrink-0" />
-              <Link href={`/dashboard/${quiz.Topic.Unit.Subject.slug}`} className="hover:text-primary truncate">{quiz.Topic.Unit.Subject.name}</Link>
+              <Link href={`/dashboard/${encodeURIComponent(quiz.Topic.Unit.Subject.slug)}`} className="hover:text-primary truncate">{quiz.Topic.Unit.Subject.name}</Link>
               <ChevronLeft className="w-4 h-4 flex-shrink-0" />
-              <Link href={`/dashboard/${quiz.Topic.Unit.Subject.slug}/${quiz.Topic.Unit.slug}`} className="hover:text-primary truncate">{quiz.Topic.Unit.name}</Link>
+              <Link href={`/dashboard/${encodeURIComponent(quiz.Topic.Unit.Subject.slug)}/${encodeURIComponent(quiz.Topic.Unit.slug)}`} className="hover:text-primary truncate">{quiz.Topic.Unit.name}</Link>
               <ChevronLeft className="w-4 h-4 flex-shrink-0" />
-              <Link href={`/dashboard/${quiz.Topic.Unit.Subject.slug}/${quiz.Topic.Unit.slug}/${quiz.Topic.id}`} className="hover:text-primary truncate">{quiz.Topic.name}</Link>
+              <Link href={`/dashboard/${encodeURIComponent(quiz.Topic.Unit.Subject.slug)}/${encodeURIComponent(quiz.Topic.Unit.slug)}/${quiz.Topic.id}`} className="hover:text-primary truncate">{quiz.Topic.name}</Link>
               <ChevronLeft className="w-4 h-4 flex-shrink-0" />
               <span className="text-gray-900 dark:text-white font-medium truncate">{quiz.title}</span>
               <ChevronLeft className="w-4 h-4 flex-shrink-0" />
@@ -469,7 +469,7 @@ export default function QuizResultsPage() {
 
         {/* Actions */}
         <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-          <Link href={`/dashboard/${quiz.Topic.Unit.Subject.slug}/${quiz.Topic.Unit.slug}/${quiz.Topic.id}`}>
+          <Link href={`/dashboard/${encodeURIComponent(quiz.Topic.Unit.Subject.slug)}/${encodeURIComponent(quiz.Topic.Unit.slug)}/${quiz.Topic.id}`}>
             <Button variant="outline" icon={<ArrowLeft className="w-4 h-4" />}>
               Back to Topic
             </Button>

@@ -212,7 +212,7 @@ export default function SubjectPage() {
             return (
               <Link
                 key={unit.id}
-                href={`/dashboard/${subject.slug}/${unit.slug}`}
+                href={`/dashboard/${encodeURIComponent(subject.slug)}/${encodeURIComponent(unit.slug)}`}
                 className="group"
               >
                 <GlassCard variant="strong" padding="lg" className="h-full flex flex-col">

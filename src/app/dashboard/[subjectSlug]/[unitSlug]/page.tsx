@@ -127,7 +127,7 @@ export default function UnitPage() {
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Unit not found</h1>
-          <Link href={`/dashboard/${subjectSlug}`} className="mt-4 text-primary hover:underline">Back to Subject</Link>
+          <Link href={`/dashboard/${encodeURIComponent(subjectSlug as string)}`} className="mt-4 text-primary hover:underline">Back to Subject</Link>
         </div>
       </div>
     );
@@ -144,7 +144,7 @@ export default function UnitPage() {
         <nav className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-6" aria-label="Breadcrumb">
           <Link href="/dashboard" className="hover:text-primary">Dashboard</Link>
           <ChevronLeft className="w-4 h-4" />
-          <Link href={`/dashboard/${Subject.slug}`} className="hover:text-primary">{Subject.name}</Link>
+          <Link href={`/dashboard/${encodeURIComponent(Subject.slug)}`} className="hover:text-primary">{Subject.name}</Link>
           <ChevronLeft className="w-4 h-4" />
           <span className="text-gray-900 dark:text-white font-medium">{unit.name}</span>
         </nav>
@@ -182,7 +182,7 @@ export default function UnitPage() {
             return (
               <Link
                 key={topic.id}
-                href={`/dashboard/${Subject.slug}/${unit.slug}/${topic.id}`}
+                href={`/dashboard/${encodeURIComponent(Subject.slug)}/${encodeURIComponent(unit.slug)}/${topic.id}`}
                 className="group"
               >
                 <GlassCard variant="strong" padding="md" className="flex items-center gap-4">

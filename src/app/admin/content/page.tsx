@@ -873,7 +873,7 @@ export default function AdminContentPage() {
                                     <div>
                                       <p className="font-medium text-gray-900 dark:text-white">{topic.name}</p>
                                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                                        {topic._count.Resource} resources · {topic._count.Recording} recordings · {topic._count.Quiz} quizzes
+                                        {topic._count.Resource} resources · {topic._count.Recording} recordings · {topic._count.Quiz} QP & MS
                                       </p>
                                     </div>
                                   </div>
@@ -908,7 +908,7 @@ export default function AdminContentPage() {
                                           onClick={() => setActiveTab("quizzes")}
                                           className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${activeTab === "quizzes" ? "border-primary text-primary" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
                                         >
-                                          Quizzes ({topic._count.Quiz})
+                                          QP & MS ({topic._count.Quiz})
                                         </button>
                                       </nav>
                                     </div>

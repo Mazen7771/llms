@@ -45,6 +45,13 @@ export default function SubjectPage() {
   const params = useParams();
   const router = useRouter();
   const { subjectSlug } = params;
+  // App Router useParams() returns canonicalized (percent-encoded) values
+  // (e.g. "Unit%203"); decode before comparing against real slugs. Never
+  // throws on already-decoded or malformed input.
+  const dec = (v: unknown) => {
+    const s = typeof v === "string" ? v : "";
+    try { return decodeURIComponent(s); } catch { return s; }
+  };
 
   const [subject, setSubject] = useState<SubjectData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,7 +65,7 @@ export default function SubjectPage() {
       const res = await fetch(`/api/student/dashboard`);
       if (res.ok) {
         const data = await res.json();
-        const subjectData = data.subjects.find((s: any) => s.slug === subjectSlug);
+        const subjectData = data.subjects.find((s: any) => s.slug === dec(subjectSlug));
         if (subjectData) {
           // The dashboard API returns raw units/topics without aggregates or an
           // icon — compute them here (mirrors SubjectsOverview.tsx) so the

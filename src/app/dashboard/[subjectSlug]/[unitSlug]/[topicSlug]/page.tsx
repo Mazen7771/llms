@@ -71,6 +71,12 @@ export default function TopicDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { subjectSlug, unitSlug, topicSlug } = params;
+  // App Router useParams() returns canonicalized (percent-encoded) values;
+  // decode before use. Never throws on already-decoded or malformed input.
+  const dec = (v: unknown) => {
+    const s = typeof v === "string" ? v : "";
+    try { return decodeURIComponent(s); } catch { return s; }
+  };
 
   const [topic, setTopic] = useState<TopicData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,7 +91,7 @@ export default function TopicDetailPage() {
 
   const fetchTopic = async () => {
     try {
-      const res = await fetch(`/api/student/progress/${topicSlug}`);
+      const res = await fetch(`/api/student/progress/${dec(topicSlug)}`);
       if (res.ok) {
         const data = await res.json();
         setTopic(data.topic);
@@ -112,7 +118,7 @@ export default function TopicDetailPage() {
     const newProgress = { ...progress, [field]: value };
     setProgress(newProgress);
     try {
-      await fetch(`/api/student/progress/${topicSlug}`, {
+      await fetch(`/api/student/progress/${dec(topicSlug)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newProgress),

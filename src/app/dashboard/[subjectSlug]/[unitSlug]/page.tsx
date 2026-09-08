@@ -39,6 +39,13 @@ export default function UnitPage() {
   const params = useParams();
   const router = useRouter();
   const { subjectSlug, unitSlug } = params;
+  // App Router useParams() returns canonicalized (percent-encoded) values
+  // (e.g. "Unit%203"); decode before comparing against real slugs. Never
+  // throws on already-decoded or malformed input.
+  const dec = (v: unknown) => {
+    const s = typeof v === "string" ? v : "";
+    try { return decodeURIComponent(s); } catch { return s; }
+  };
 
   const [unit, setUnit] = useState<UnitData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,9 +59,9 @@ export default function UnitPage() {
       const res = await fetch(`/api/student/dashboard`);
       if (res.ok) {
         const data = await res.json();
-        const subject = data.subjects.find((s: any) => s.slug === subjectSlug);
+        const subject = data.subjects.find((s: any) => s.slug === dec(subjectSlug));
         if (subject) {
-          const unitData = Object.values(subject.units).find((u: any) => u.slug === unitSlug);
+          const unitData = Object.values(subject.units).find((u: any) => u.slug === dec(unitSlug));
           if (unitData) {
             // The dashboard API returns units without a nested Subject — attach
             // it from the subject we just looked up by slug so the breadcrumb
@@ -127,7 +134,7 @@ export default function UnitPage() {
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Unit not found</h1>
-          <Link href={`/dashboard/${encodeURIComponent(subjectSlug as string)}`} className="mt-4 text-primary hover:underline">Back to Subject</Link>
+          <Link href={`/dashboard/${encodeURIComponent(dec(subjectSlug) as string)}`} className="mt-4 text-primary hover:underline">Back to Subject</Link>
         </div>
       </div>
     );

@@ -112,7 +112,7 @@ function TeacherLoginPageContent() {
         form.appendChild(input);
       };
       add("csrfToken", csrfToken);
-      add("studentId", studentId.trim());
+      add("teacherId", studentId.trim());
       add("password", password);
       add("callbackUrl", callbackUrl);
       document.body.appendChild(form);

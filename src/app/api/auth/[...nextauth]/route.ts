@@ -58,7 +58,6 @@ export const authOptions: NextAuthOptions = {
 
         return {
           id: user.id,
-          email: user.email,
           name: user.name,
           role: user.role,
           studentId: user.studentId,
@@ -71,16 +70,16 @@ export const authOptions: NextAuthOptions = {
       id: "teacher",
       name: "Teacher",
       credentials: {
-        studentId: { label: "Teacher ID", type: "text", placeholder: "0" },
+        teacherId: { label: "Teacher ID", type: "text", placeholder: "0" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.studentId || !credentials?.password) {
+        if (!credentials?.teacherId || !credentials?.password) {
           throw new Error("Teacher ID and password are required");
         }
 
         const user = await prisma.user.findUnique({
-          where: { studentId: credentials.studentId },
+          where: { studentId: credentials.teacherId },
         });
 
         if (!user || user.role !== "TEACHER" || !user.passwordHash) {
@@ -98,7 +97,6 @@ export const authOptions: NextAuthOptions = {
 
         return {
           id: user.id,
-          email: user.email,
           name: user.name,
           role: user.role,
           studentId: user.studentId,

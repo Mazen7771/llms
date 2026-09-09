@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
+import { nestedSubjectFilter, subjectFilter } from "@/lib/subject-filter";
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,6 +25,7 @@ export async function GET(request: NextRequest) {
     if (!type || type === "subjects") {
       const subjects = await prisma.subject.findMany({
         where: {
+          ...(await subjectFilter(session.user.id)),
           OR: [
             { name: { contains: searchTerm, mode: "insensitive" } },
             { slug: { contains: searchTerm, mode: "insensitive" } },
@@ -44,6 +46,7 @@ export async function GET(request: NextRequest) {
     if (!type || type === "topics") {
       const topics = await prisma.topic.findMany({
         where: {
+          ...(await nestedSubjectFilter(session.user.id)),
           OR: [
             { name: { contains: searchTerm, mode: "insensitive" } },
           ],
@@ -61,6 +64,7 @@ export async function GET(request: NextRequest) {
     if (!type || type === "quizzes") {
       const quizzes = await prisma.quiz.findMany({
         where: {
+          ...(await nestedSubjectFilter(session.user.id)),
           OR: [
             { title: { contains: searchTerm, mode: "insensitive" } },
           ],
@@ -79,6 +83,7 @@ export async function GET(request: NextRequest) {
     if (!type || type === "recordings") {
       const recordings = await prisma.recording.findMany({
         where: {
+          ...(await nestedSubjectFilter(session.user.id)),
           OR: [
             { title: { contains: searchTerm, mode: "insensitive" } },
             { description: { contains: searchTerm, mode: "insensitive" } },
@@ -97,6 +102,7 @@ export async function GET(request: NextRequest) {
     if (!type || type === "resources") {
       const resources = await prisma.resource.findMany({
         where: {
+          ...(await nestedSubjectFilter(session.user.id)),
           OR: [
             { title: { contains: searchTerm, mode: "insensitive" } },
             { description: { contains: searchTerm, mode: "insensitive" } },

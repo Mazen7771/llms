@@ -289,6 +289,7 @@ model User {
   passwordResetExpires            DateTime?
   studentId                       String?        @unique
   accountStatus                   AccountStatus  @default(ACTIVE)
+  subjectAccess                   SubjectAccess  @default(BOTH)
   Announcement                    Announcement[]
   AuditLog                        AuditLog[]
   Invite_Invite_invitedByIdToUser Invite[]       @relation("Invite_invitedByIdToUser")
@@ -301,6 +302,12 @@ model User {
   Resource                        Resource[]
 
   @@index([role, studentId])
+}
+
+enum SubjectAccess {
+  BOTH
+  BIOLOGY
+  CHEMISTRY
 }
 
 enum AccountStatus {

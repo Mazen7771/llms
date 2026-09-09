@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
+import { isSubjectAllowed } from "@/lib/subject-filter";
 
 export async function POST(
   request: NextRequest,
@@ -17,7 +18,10 @@ export async function POST(
 
     const quiz = await prisma.quiz.findUnique({
       where: { id: quizId },
-      include: { Question: { orderBy: { orderIndex: "asc" }, include: { QuestionOption: true } } },
+      include: {
+        Question: { orderBy: { orderIndex: "asc" }, include: { QuestionOption: true } },
+        Topic: { include: { Unit: { include: { Subject: true } } } },
+      },
     });
 
     if (!quiz) {
@@ -26,6 +30,12 @@ export async function POST(
 
     if (!quiz.isActive) {
       return NextResponse.json({ error: "Quiz is not active" }, { status: 400 });
+    }
+
+    // Guard: student must have access to the subject this quiz belongs to.
+    const allowed = await isSubjectAllowed(session.user.id, quiz.Topic.Unit.Subject.slug);
+    if (!allowed) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     const existingAttempt = await prisma.quizAttempt.findUnique({

@@ -63,6 +63,7 @@ export const authOptions: NextAuthOptions = {
           role: user.role,
           studentId: user.studentId,
           accountStatus: user.accountStatus,
+          subjectAccess: user.subjectAccess,
         };
       },
     }),
@@ -102,6 +103,7 @@ export const authOptions: NextAuthOptions = {
           role: user.role,
           studentId: user.studentId,
           accountStatus: user.accountStatus,
+          subjectAccess: user.subjectAccess,
         };
       },
     }),
@@ -113,6 +115,7 @@ export const authOptions: NextAuthOptions = {
         token.role = user.role;
         token.studentId = user.studentId;
         token.accountStatus = user.accountStatus;
+        token.subjectAccess = user.subjectAccess;
       }
       return token;
     },
@@ -122,6 +125,7 @@ export const authOptions: NextAuthOptions = {
         session.user.role = token.role;
         session.user.studentId = token.studentId;
         session.user.accountStatus = token.accountStatus;
+        session.user.subjectAccess = token.subjectAccess;
       }
       return session;
     },

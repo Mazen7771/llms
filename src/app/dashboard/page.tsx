@@ -3,6 +3,16 @@
 import { useSession } from "next-auth/react";
 import { SubjectsOverview } from "@/components/dashboard/SubjectsOverview";
 
+// The subjects a student can access, derived from their subjectAccess flag.
+// Stays stable so it only recomputes when the session changes.
+const accessLabel = (subjectAccess?: string) => {
+  switch (subjectAccess) {
+    case "BIOLOGY": return "Biology";
+    case "CHEMISTRY": return "Chemistry";
+    default: return "Biology & Chemistry"; // BOTH (or unknown)
+  }
+};
+
 export default function DashboardPage() {
   const { data: session } = useSession();
   return (
@@ -14,7 +24,7 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           Welcome back, {session?.user?.name || 'Student'}
         </h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-1">Continue your learning journey in Biology & Chemistry</p>
+        <p className="text-gray-600 dark:text-gray-400 mt-1">Continue your learning journey in {accessLabel(session?.user?.subjectAccess)}</p>
       </header>
       <main id="dashboard-content">
         <SubjectsOverview />

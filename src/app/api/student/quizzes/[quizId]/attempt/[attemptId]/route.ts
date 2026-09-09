@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
+import { isSubjectAllowed } from "@/lib/subject-filter";
 
 /**
  * Load an in-progress quiz attempt so a student can resume it after
@@ -30,6 +31,20 @@ export async function GET(
 
     if (attempt.submittedAt) {
       return NextResponse.json({ error: "Quiz already submitted" }, { status: 400 });
+    }
+
+    // Guard: student must have access to the subject this quiz belongs to
+    // (defense in depth — the attempt itself is already scoped to the student).
+    const quiz = await prisma.quiz.findUnique({
+      where: { id: quizId },
+      include: { Topic: { include: { Unit: { include: { Subject: true } } } } },
+    });
+    if (!quiz) {
+      return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
+    }
+    const allowed = await isSubjectAllowed(session.user.id, quiz.Topic.Unit.Subject.slug);
+    if (!allowed) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     const answers = attempt.StudentAnswer.map((a) => ({

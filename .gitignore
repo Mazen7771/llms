@@ -64,3 +64,4 @@ certbot/
 lms-schema.sql
 node_modules/
 .next/
+dbq.cjs

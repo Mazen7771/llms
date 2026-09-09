@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
+import { isSubjectAllowed } from "@/lib/subject-filter";
 
 export async function GET(
   request: NextRequest,
@@ -39,6 +40,12 @@ export async function GET(
 
     if (!quiz) {
       return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
+    }
+
+    // Guard: student must have access to the subject this quiz belongs to.
+    const allowed = await isSubjectAllowed(session.user.id, quiz.Topic.Unit.Subject.slug);
+    if (!allowed) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     // Find the attempt

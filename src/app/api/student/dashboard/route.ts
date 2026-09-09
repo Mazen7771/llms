@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
+import { subjectFilter } from "@/lib/subject-filter";
 
 export async function GET() {
   try {
@@ -10,8 +11,9 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Fetch all subjects with units and topics
+    // Fetch subjects limited to the student's access level
     const subjects = await prisma.subject.findMany({
+      where: await subjectFilter(session.user.id),
       orderBy: { name: "asc" },
       include: {
         Unit: {

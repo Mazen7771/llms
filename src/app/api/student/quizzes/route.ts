@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
+import { isSubjectAllowed, nestedSubjectFilter } from "@/lib/subject-filter";
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,6 +32,12 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
       }
 
+      // Guard: student must have access to the subject this quiz belongs to.
+      const allowed = await isSubjectAllowed(session.user.id, quiz.Topic.Unit.Subject.slug);
+      if (!allowed) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      }
+
       // Remove correct answers for active quizzes
       const sanitizedQuiz = {
         ...quiz,
@@ -46,7 +53,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ quiz: sanitizedQuiz });
     }
 
-    const where: any = { isActive: true };
+    const where: any = { isActive: true, ...(await nestedSubjectFilter(session.user.id)) };
     if (topicId) where.topicId = topicId;
 
     const quizzes = await prisma.quiz.findMany({
@@ -82,7 +89,7 @@ export async function POST(request: NextRequest) {
 
     const quiz = await prisma.quiz.findUnique({
       where: { id: quizId },
-      include: { Question: true },
+      include: { Question: true, Topic: { include: { Unit: { include: { Subject: true } } } } },
     });
 
     if (!quiz) {
@@ -91,6 +98,12 @@ export async function POST(request: NextRequest) {
 
     if (!quiz.isActive) {
       return NextResponse.json({ error: "Quiz is not active" }, { status: 400 });
+    }
+
+    // Guard: student must have access to the subject this quiz belongs to.
+    const allowed = await isSubjectAllowed(session.user.id, quiz.Topic.Unit.Subject.slug);
+    if (!allowed) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     // Check if already attempted

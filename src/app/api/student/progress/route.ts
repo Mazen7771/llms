@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
+import { isSubjectAllowed, nestedSubjectFilter } from "@/lib/subject-filter";
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
     }
 
     const progress = await prisma.progress.findMany({
-      where: { studentId: session.user.id },
+      where: { studentId: session.user.id, ...(await nestedSubjectFilter(session.user.id)) },
       include: {
         Topic: {
           include: {
@@ -44,6 +45,19 @@ export async function POST(request: NextRequest) {
 
     if (!topicId) {
       return NextResponse.json({ error: "Topic ID is required" }, { status: 400 });
+    }
+
+    // Guard: student must have access to the subject this topic belongs to.
+    const topic = await prisma.topic.findUnique({
+      where: { id: topicId },
+      include: { Unit: { include: { Subject: true } } },
+    });
+    if (!topic) {
+      return NextResponse.json({ error: "Topic not found" }, { status: 404 });
+    }
+    const allowed = await isSubjectAllowed(session.user.id, topic.Unit.Subject.slug);
+    if (!allowed) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     const existing = await prisma.progress.findUnique({

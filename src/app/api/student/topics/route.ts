@@ -4,6 +4,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
 import { buildPublicUrl } from "@/lib/upload";
 import { buildPlayerUrl } from "@/lib/cloudflare-stream";
+import { isSubjectAllowed } from "@/lib/subject-filter";
 
 export async function GET(request: NextRequest) {
   try {
@@ -35,6 +36,12 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "Topic not found" }, { status: 404 });
       }
 
+      // Guard: student must have access to the subject this topic belongs to.
+      const allowed = await isSubjectAllowed(session.user.id, topic.Unit.Subject.slug);
+      if (!allowed) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      }
+
       const enrichedTopic = {
         ...topic,
         Resource: topic.Resource.map((r) => ({
@@ -51,6 +58,19 @@ export async function GET(request: NextRequest) {
     }
 
     if (unitId) {
+      // Guard: student must have access to the subject this unit belongs to.
+      const unit = await prisma.unit.findUnique({
+        where: { id: unitId },
+        include: { Subject: true },
+      });
+      if (!unit) {
+        return NextResponse.json({ error: "Unit not found" }, { status: 404 });
+      }
+      const unitAllowed = await isSubjectAllowed(session.user.id, unit.Subject.slug);
+      if (!unitAllowed) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      }
+
       const topics = await prisma.topic.findMany({
         where: { unitId },
         orderBy: { orderIndex: "asc" },

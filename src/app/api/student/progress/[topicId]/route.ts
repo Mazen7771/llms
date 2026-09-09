@@ -4,6 +4,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
 import { buildPublicUrl } from "@/lib/upload";
 import { buildPlayerUrl } from "@/lib/cloudflare-stream";
+import { isSubjectAllowed } from "@/lib/subject-filter";
 
 export async function GET(
   request: NextRequest,
@@ -30,6 +31,12 @@ export async function GET(
 
     if (!topic) {
       return NextResponse.json({ error: "Topic not found" }, { status: 404 });
+    }
+
+    // Guard: student must have access to the subject this topic belongs to.
+    const allowed = await isSubjectAllowed(session.user.id, topic.Unit.Subject.slug);
+    if (!allowed) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     const progress = await prisma.progress.findUnique({
@@ -89,10 +96,16 @@ export async function PUT(
     // Resolve the topic by id (see GET).
     const topic = await prisma.topic.findUnique({
       where: { id: topicId },
-      select: { id: true },
+      include: { Unit: { include: { Subject: true } } },
     });
     if (!topic) {
       return NextResponse.json({ error: "Topic not found" }, { status: 404 });
+    }
+
+    // Guard: student must have access to the subject this topic belongs to.
+    const allowed = await isSubjectAllowed(session.user.id, topic.Unit.Subject.slug);
+    if (!allowed) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     // Only include fields the client actually sent, so toggling one

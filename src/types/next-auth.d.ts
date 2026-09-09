@@ -1,6 +1,6 @@
 import { DefaultSession, DefaultUser } from "next-auth";
 import { JWT, DefaultJWT } from "next-auth/jwt";
-import { Role, AccountStatus } from "@prisma/client";
+import { Role, AccountStatus, SubjectAccess } from "@/generated/prisma/client";
 
 declare module "next-auth" {
   interface Session {
@@ -9,6 +9,7 @@ declare module "next-auth" {
       role: Role;
       studentId: string | null;
       accountStatus: AccountStatus;
+      subjectAccess: SubjectAccess;
     } & DefaultSession["user"];
   }
 
@@ -16,6 +17,7 @@ declare module "next-auth" {
     role: Role;
     studentId: string | null;
     accountStatus: AccountStatus;
+    subjectAccess: SubjectAccess;
   }
 }
 
@@ -25,5 +27,6 @@ declare module "next-auth/jwt" {
     role: Role;
     studentId: string | null;
     accountStatus: AccountStatus;
+    subjectAccess: SubjectAccess;
   }
 }

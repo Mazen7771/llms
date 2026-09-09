@@ -35,15 +35,15 @@ if (!DATABASE_URL || !TEACHER_PASSWORD) {
   const hash = await bcrypt.hash(TEACHER_PASSWORD, 12);
   const res = await client.query(
     `INSERT INTO "User"
-        (id, email, "passwordHash", role, name, "emailVerifiedAt", "studentId", "accountStatus", "subjectAccess", "createdAt", "updatedAt")
-     VALUES (gen_random_uuid(), 'sulafa@school.edu', $1, 'TEACHER', 'Miss Sulafa', now(), '0', 'ACTIVE', 'BOTH', now(), now())
+        (id, "passwordHash", role, name, "studentId", "accountStatus", "subjectAccess", email, "createdAt", "updatedAt")
+     VALUES (gen_random_uuid(), $1, 'TEACHER', 'Miss Sulafa', '0', 'ACTIVE', 'BOTH', 'teacher@lms.local', now(), now())
      ON CONFLICT ("studentId")
      DO UPDATE SET "passwordHash" = EXCLUDED."passwordHash",
-                   email = EXCLUDED.email,
                    role = 'TEACHER',
                    name = EXCLUDED.name,
                    "accountStatus" = 'ACTIVE',
                    "subjectAccess" = 'BOTH',
+                   email = EXCLUDED.email,
                    "updatedAt" = now()
      RETURNING ("xmax" = 0) AS was_inserted`,
     [hash]

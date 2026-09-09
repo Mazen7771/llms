@@ -103,9 +103,9 @@ function validateEnv(): EnvConfig {
       console.warn("   → Using default NEXTAUTH_URL: " + config.NEXTAUTH_URL);
     }
     if (!config.TEACHER_PASSWORD) {
-      config.TEACHER_PASSWORD = "teacher2024";
+      config.TEACHER_PASSWORD = "ChangeMe123!";
       process.env.TEACHER_PASSWORD = config.TEACHER_PASSWORD;
-      console.warn("   → Using default TEACHER_PASSWORD: teacher2024");
+      console.warn("   → Using default TEACHER_PASSWORD: ChangeMe123!");
     }
   }
 

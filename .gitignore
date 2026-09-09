@@ -66,3 +66,7 @@ node_modules/
 .next/
 dbq.cjs
 HANDOFF-*.md
+scripts/test-live-login.cjs
+scripts/prove-login.cjs
+scripts/debug-session.cjs
+reports/

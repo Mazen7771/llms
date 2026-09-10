@@ -63,6 +63,28 @@ const isTopicCompleted = (topic: DashboardTopic) => {
   );
 };
 
+// "Results" is treated as a first-class subject card beside Biology & Chemistry,
+// but it's not a Subject row in the DB — it routes to the standalone /results
+// page (exam/assessment result files uploaded by teachers). This keeps it
+// visible to every student regardless of their subjectAccess restriction.
+const ResultsCard = () => (
+  <Link href="/results" className="group">
+    <Card variant="interactive" padding="lg" className="h-full">
+      <div className="flex items-start gap-3 mb-4">
+        <span className="text-3xl" aria-hidden="true">🏆</span>
+        <div>
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Results</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Exam & assessment results</p>
+        </div>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        View and download the results your teachers have published.
+      </p>
+      <div className="mt-4 text-sm font-medium text-primary group-hover:underline">Open results →</div>
+    </Card>
+  </Link>
+);
+
 export function SubjectsOverview() {
   const [subjects, setSubjects] = useState<SubjectWithProgress[]>([]);
   const [loading, setLoading] = useState(true);
@@ -158,12 +180,17 @@ export function SubjectsOverview() {
 
   if (subjects.length === 0) {
     return (
-      <div className="text-center py-12">
-        <div className="text-6xl mb-4" aria-hidden="true">📚</div>
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No content yet</h2>
-        <p className="text-gray-600 dark:text-gray-400">
-          Your teacher hasn't added any topics yet. Check back soon!
-        </p>
+      <div className="space-y-8">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <ResultsCard />
+        </div>
+        <div className="text-center py-6">
+          <div className="text-6xl mb-4" aria-hidden="true">📚</div>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No learning content yet</h2>
+          <p className="text-gray-600 dark:text-gray-400">
+            Your teacher hasn't added any topics to Biology or Chemistry yet. Check back soon!
+          </p>
+        </div>
       </div>
     );
   }
@@ -212,6 +239,7 @@ export function SubjectsOverview() {
           </Card>
         </Link>
       ))}
+      <ResultsCard />
     </div>
   );
 }

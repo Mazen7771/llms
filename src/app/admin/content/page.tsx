@@ -418,25 +418,49 @@ export default function AdminContentPage() {
   const uploadResourceFile = async (file: File, onProgress?: (progress: number) => void): Promise<{ fileKey: string; fileType: string; fileSize: number } | null> => {
     const CHUNK_SIZE = 3 * 1024 * 1024; // 3MB, safely under the ~4.5MB limit
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const UPLOAD_TIMEOUT_MS = 120_000; // 2 min per chunk / whole file
 
-    // Generic XHR POST used for chunked uploads.
-    const postForm = (formData: FormData) =>
+    // Generic XHR POST used for chunked uploads and single-file uploads.
+    // Includes a timeout so the request never hangs indefinitely (Vercel
+    // cold-starts or network hiccups previously caused perpetual loading
+    // because the XHR had no timeout and errors resolved with null).
+    const postForm = (formData: FormData, onUploadProgress?: (pct: number) => void): Promise<any> =>
       new Promise<any>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "/api/upload");
+        xhr.timeout = UPLOAD_TIMEOUT_MS;
+
+        if (onUploadProgress) {
+          xhr.upload.addEventListener("progress", (event) => {
+            if (event.lengthComputable) {
+              onUploadProgress(Math.round((event.loaded / event.total) * 100));
+            }
+          });
+        }
+
         xhr.addEventListener("load", () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
-              resolve(JSON.parse(xhr.responseText));
+              const json = JSON.parse(xhr.responseText);
+              resolve(json);
             } catch {
-              resolve(null);
+              reject(new Error("Upload response was not valid JSON"));
             }
           } else {
-            resolve(null);
+            // Surface the server error message when available.
+            let msg = `Upload failed (HTTP ${xhr.status})`;
+            try {
+              const body = JSON.parse(xhr.responseText);
+              if (body.error) msg += `: ${body.error}`;
+            } catch { /* ignore */ }
+            reject(new Error(msg));
           }
         });
-        xhr.addEventListener("error", () => reject(new Error("Upload failed")));
-        xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
+
+        xhr.addEventListener("error", () => reject(new Error("Network error — check your connection")));
+        xhr.addEventListener("abort", () => reject(new Error("Upload was aborted")));
+        xhr.addEventListener("timeout", () => reject(new Error("Upload timed out — try a smaller file or check your connection")));
+
         xhr.send(formData);
       });
 
@@ -445,29 +469,7 @@ export default function AdminContentPage() {
       if (totalChunks <= 1) {
         const formData = new FormData();
         formData.append("file", file);
-        return await new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open("POST", "/api/upload");
-          xhr.upload.addEventListener("progress", (event) => {
-            if (event.lengthComputable && onProgress) {
-              onProgress(Math.round((event.loaded / event.total) * 100));
-            }
-          });
-          xhr.addEventListener("load", () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              try {
-                resolve(JSON.parse(xhr.responseText));
-              } catch {
-                resolve(null);
-              }
-            } else {
-              resolve(null);
-            }
-          });
-          xhr.addEventListener("error", () => reject(new Error("Upload failed")));
-          xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
-          xhr.send(formData);
-        });
+        return await postForm(formData, onProgress);
       }
 
       // Large files: upload chunks in order; the last one triggers reassembly
@@ -488,9 +490,14 @@ export default function AdminContentPage() {
         formData.append("type", file.type || "application/octet-stream");
         formData.append("finalize", String(i === totalChunks - 1));
 
-        const res = await postForm(formData);
+        const chunkProgress = (pct: number) => {
+          const totalPct = Math.round(((uploadedBytes + (end - start) * pct / 100) / file.size) * 100);
+          if (onProgress) onProgress(totalPct);
+        };
+
+        const res = await postForm(formData, onProgress ? chunkProgress : undefined);
         if (!res) {
-          return null;
+          throw new Error("Upload returned an empty response");
         }
         uploadedBytes += end - start;
         if (onProgress) {
@@ -503,7 +510,8 @@ export default function AdminContentPage() {
       return null;
     } catch (error) {
       console.error("File upload error:", error);
-      return null;
+      // Re-throw so the caller can surface the specific error message.
+      throw error;
     }
   };
 
@@ -549,8 +557,9 @@ export default function AdminContentPage() {
         const data = await res.json();
         showToast("error", data.error || "Failed to create resource");
       }
-    } catch (error) {
-      showToast("error", "An unexpected error occurred");
+    } catch (error: any) {
+      const msg = error?.message || "An unexpected error occurred";
+      showToast("error", msg);
     } finally {
       setUploadingResource(null);
       setUploadProgress(0);
@@ -1385,11 +1394,22 @@ export default function AdminContentPage() {
                             {/* Add Topic Form */}
                             <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
                               <form
+                                key={`topic-form-${unit.Topic.length}`}
                                 onSubmit={(e) => {
                                   e.preventDefault();
                                   const formData = new FormData(e.currentTarget);
-                                  handleCreateTopic(unit.id, subject.id, formData.get("name") as string, parseInt(formData.get("orderIndex") as string) || 0);
-                                  e.currentTarget.reset();
+                                  const orderVal = parseInt(formData.get("orderIndex") as string);
+                                  if (isNaN(orderVal) || orderVal < 0) {
+                                    showToast("error", "Order must be a valid non-negative number");
+                                    return;
+                                  }
+                                  handleCreateTopic(unit.id, subject.id, formData.get("name") as string, orderVal);
+                                  // Only clear the name field; leave the order input
+                                  // intact so the next submission still carries a
+                                  // valid orderIndex (reset() would blank it out,
+                                  // and parseInt("") || 0 would duplicate orderIndex 0).
+                                  const nameInput = e.currentTarget.querySelector<HTMLInputElement>('[name="name"]');
+                                  if (nameInput) nameInput.value = "";
                                 }}
                                 className="flex items-center gap-2"
                               >
@@ -1408,8 +1428,19 @@ export default function AdminContentPage() {
                         onSubmit={(e) => {
                           e.preventDefault();
                           const formData = new FormData(e.currentTarget);
-                          handleCreateUnit(subject.id, formData.get("name") as string, parseInt(formData.get("orderIndex") as string) || 0);
-                          e.currentTarget.reset();
+                          const orderVal = parseInt(formData.get("orderIndex") as string);
+                          if (isNaN(orderVal) || orderVal < 0) {
+                            showToast("error", "Order must be a valid non-negative number");
+                            return;
+                          }
+                          handleCreateUnit(subject.id, formData.get("name") as string, orderVal);
+                          // Only clear the name field; leave the order input
+                          // intact so the next submission still carries a valid
+                          // orderIndex (reset() blanks it, and parseInt("") || 0
+                          // would duplicate orderIndex 0 — the unique constraint
+                          // error is why chapters 10+ appeared unsavable).
+                          const nameInput = e.currentTarget.querySelector<HTMLInputElement>('[name="name"]');
+                          if (nameInput) nameInput.value = "";
                         }}
                         className="flex items-center gap-2"
                       >

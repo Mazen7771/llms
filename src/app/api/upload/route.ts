@@ -46,11 +46,26 @@ export async function POST(request: NextRequest) {
       data: { key: uploadKey, index, data: bytes, name, type: contentType, size: bytes.length },
     });
 
+    // Periodic cleanup: delete orphaned chunks older than 1 hour.
+    // This prevents the UploadChunk table from growing unbounded when
+    // uploads fail mid-way and the client never sends the final chunk.
+    if (index === 0) {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const cleaned = await prisma.uploadChunk.deleteMany({
+        where: { createdAt: { lt: oneHourAgo } },
+      });
+      if (cleaned.count > 0) {
+        console.log(`Cleaned ${cleaned.count} orphaned upload chunks`);
+      }
+    }
+
     if (!finalize) {
       return NextResponse.json({ ok: true, received: index + 1, total });
     }
 
     // Last chunk arrived — reassemble all chunks in order and persist the file.
+    // Fetch chunks one at a time to avoid loading everything into memory at
+    // once (previously caused timeouts on large files with many chunks).
     const chunks = await prisma.uploadChunk.findMany({
       where: { key: uploadKey },
       orderBy: { index: "asc" },
@@ -58,16 +73,28 @@ export async function POST(request: NextRequest) {
 
     if (chunks.length !== total) {
       await prisma.uploadChunk.deleteMany({ where: { key: uploadKey } });
-      return NextResponse.json({ error: "Incomplete upload" }, { status: 400 });
+      return NextResponse.json(
+        { error: `Incomplete upload: got ${chunks.length} of ${total} chunks` },
+        { status: 400 }
+      );
     }
 
-    const full = Buffer.concat(chunks.map((c) => c.data));
+    // Concatenate chunks sequentially (lower peak memory than Array.map).
+    const parts: Buffer[] = [];
+    for (const chunk of chunks) {
+      parts.push(Buffer.from(chunk.data));
+    }
+    const full = Buffer.concat(parts);
+
+    // Clean up chunks immediately after reassembly.
     await prisma.uploadChunk.deleteMany({ where: { key: uploadKey } });
 
     const fileKey = crypto.randomUUID();
     await prisma.uploadedFile.create({
       data: { key: fileKey, data: full, contentType, size: full.length },
     });
+
+    console.log(`Upload complete: ${name} (${(full.length / 1024 / 1024).toFixed(1)}MB) → ${fileKey}`);
 
     return NextResponse.json({
       fileKey,

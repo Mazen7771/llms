@@ -416,7 +416,7 @@ export default function AdminContentPage() {
   // threshold are split into ordered chunks so each request stays under
   // Vercel's ~4.5MB serverless request-body limit; the server reassembles them.
   const uploadResourceFile = async (file: File, onProgress?: (progress: number) => void): Promise<{ fileKey: string; fileType: string; fileSize: number } | null> => {
-    const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB — under Vercel's ~4.5MB serverless limit
+    const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB — small enough for Neon DB writes reliably
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     const UPLOAD_TIMEOUT_MS = 180_000; // 3 min per chunk (cold starts can be slow)
     const MAX_RETRIES = 3;

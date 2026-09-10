@@ -416,38 +416,55 @@ export default function AdminContentPage() {
   // threshold are split into ordered chunks so each request stays under
   // Vercel's ~4.5MB serverless request-body limit; the server reassembles them.
   const uploadResourceFile = async (file: File, onProgress?: (progress: number) => void): Promise<{ fileKey: string; fileType: string; fileSize: number } | null> => {
-    const CHUNK_SIZE = 3 * 1024 * 1024; // 3MB, safely under the ~4.5MB limit
+    const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB — under Vercel's ~4.5MB serverless limit
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    const UPLOAD_TIMEOUT_MS = 120_000; // 2 min per chunk / whole file
+    const UPLOAD_TIMEOUT_MS = 180_000; // 3 min per chunk (cold starts can be slow)
+    const MAX_RETRIES = 3;
+    const STALL_TIMEOUT_MS = 60_000; // 60s with no progress → fail
 
-    // Generic XHR POST used for chunked uploads and single-file uploads.
-    // Includes a timeout so the request never hangs indefinitely (Vercel
-    // cold-starts or network hiccups previously caused perpetual loading
-    // because the XHR had no timeout and errors resolved with null).
+    // XHR POST with timeout, progress tracking, and stall detection.
     const postForm = (formData: FormData, onUploadProgress?: (pct: number) => void): Promise<any> =>
       new Promise<any>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "/api/upload");
         xhr.timeout = UPLOAD_TIMEOUT_MS;
 
+        let lastProgressTime = Date.now();
+        let stallTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const clearStallTimer = () => {
+          if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
+        };
+
         if (onUploadProgress) {
           xhr.upload.addEventListener("progress", (event) => {
             if (event.lengthComputable) {
+              lastProgressTime = Date.now();
               onUploadProgress(Math.round((event.loaded / event.total) * 100));
             }
           });
         }
 
+        // Stall detector: if no upload progress for STALL_TIMEOUT_MS, abort.
+        const checkStall = () => {
+          if (Date.now() - lastProgressTime > STALL_TIMEOUT_MS) {
+            clearStallTimer();
+            xhr.abort();
+            return;
+          }
+          stallTimer = setTimeout(checkStall, 5000);
+        };
+        stallTimer = setTimeout(checkStall, 5000);
+
         xhr.addEventListener("load", () => {
+          clearStallTimer();
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
-              const json = JSON.parse(xhr.responseText);
-              resolve(json);
+              resolve(JSON.parse(xhr.responseText));
             } catch {
               reject(new Error("Upload response was not valid JSON"));
             }
           } else {
-            // Surface the server error message when available.
             let msg = `Upload failed (HTTP ${xhr.status})`;
             try {
               const body = JSON.parse(xhr.responseText);
@@ -457,25 +474,46 @@ export default function AdminContentPage() {
           }
         });
 
-        xhr.addEventListener("error", () => reject(new Error("Network error — check your connection")));
-        xhr.addEventListener("abort", () => reject(new Error("Upload was aborted")));
-        xhr.addEventListener("timeout", () => reject(new Error("Upload timed out — try a smaller file or check your connection")));
+        xhr.addEventListener("error", () => { clearStallTimer(); reject(new Error("Network error — check your connection")); });
+        xhr.addEventListener("abort", () => { clearStallTimer(); reject(new Error("Upload stalled — no data sent for 60 seconds")); });
+        xhr.addEventListener("timeout", () => { clearStallTimer(); reject(new Error("Upload timed out — try a smaller file or check your connection")); });
 
         xhr.send(formData);
       });
 
+    // Retry wrapper: retries a failed chunk up to MAX_RETRIES times with
+    // exponential backoff (2s, 4s, 8s). This handles Vercel cold starts and
+    // transient network issues that previously killed the entire upload.
+    const postFormWithRetry = async (formData: FormData, onUploadProgress?: (pct: number) => void): Promise<any> => {
+      let lastError: Error | null = null;
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          return await postForm(formData, onUploadProgress);
+        } catch (err: any) {
+          lastError = err;
+          console.warn(`Upload attempt ${attempt + 1} failed:`, err.message);
+          if (attempt < MAX_RETRIES) {
+            const delay = Math.pow(2, attempt + 1) * 1000; // 2s, 4s, 8s
+            await new Promise(r => setTimeout(r, delay));
+          }
+        }
+      }
+      throw lastError;
+    };
+
     try {
-      // Small files: single request with upload progress (original behavior).
+      // Small files: single request with upload progress.
       if (totalChunks <= 1) {
         const formData = new FormData();
         formData.append("file", file);
-        return await postForm(formData, onProgress);
+        return await postFormWithRetry(formData, onProgress);
       }
 
       // Large files: upload chunks in order; the last one triggers reassembly
-      // and returns { fileKey, fileType, fileSize }.
+      // on the server and returns { fileKey, fileType, fileSize }.
       const uploadKey = crypto.randomUUID();
       let uploadedBytes = 0;
+
       for (let i = 0; i < totalChunks; i++) {
         const start = i * CHUNK_SIZE;
         const end = Math.min(file.size, start + CHUNK_SIZE);
@@ -495,7 +533,7 @@ export default function AdminContentPage() {
           if (onProgress) onProgress(totalPct);
         };
 
-        const res = await postForm(formData, onProgress ? chunkProgress : undefined);
+        const res = await postFormWithRetry(formData, onProgress ? chunkProgress : undefined);
         if (!res) {
           throw new Error("Upload returned an empty response");
         }
@@ -510,7 +548,6 @@ export default function AdminContentPage() {
       return null;
     } catch (error) {
       console.error("File upload error:", error);
-      // Re-throw so the caller can surface the specific error message.
       throw error;
     }
   };

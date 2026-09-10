@@ -85,12 +85,12 @@ const quickActions = [
     ring: "focus-visible:ring-success",
   },
   {
-    href: "/admin/content",
-    icon: "❓",
-    title: "Manage Quizzes",
-    description: "Generate quizzes with AI from any topic",
-    bg: "bg-purple-500/10 dark:bg-purple-500/20",
-    ring: "focus-visible:ring-purple-500",
+    href: "/results",
+    icon: "🏆",
+    title: "Add Results",
+    description: "Upload and publish exam results for students to view",
+    bg: "bg-amber-500/10 dark:bg-amber-500/20",
+    ring: "focus-visible:ring-amber-500",
   },
 ];
 

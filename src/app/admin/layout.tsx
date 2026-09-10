@@ -37,9 +37,16 @@ const LogoutIcon = ({ className = "" }) => (
   </svg>
 );
 
+const TrophyIcon = ({ className = "" }) => (
+  <svg className={`w-5 h-5 ${className}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 3h12M6 3v4a6 6 0 0012 0V3M6 3H3v1a4 4 0 004 4m11-5h3v1a4 4 0 01-4 4m-6 4v5a3 3 0 01-3 3H6m6 0h6m-6-2a3 3 0 003 3h3" />
+  </svg>
+);
+
 const MenuItems = [
   { href: "/admin", label: "Overview", icon: LayoutIcon },
   { href: "/admin/students", label: "Students", icon: UsersIcon },
+  { href: "/results", label: "Results", icon: TrophyIcon },
   { href: "/dashboard/search?type=resource", label: "Content Library", icon: BookIcon },
   { href: "/admin/settings", label: "Settings", icon: SettingsIcon },
 ];

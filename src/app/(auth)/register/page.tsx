@@ -27,12 +27,6 @@ const ShieldIcon = ({ className = "" }) => (
   </svg>
 );
 
-const MailIcon = ({ className = "" }) => (
-  <svg className={`w-6 h-6 ${className}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-  </svg>
-);
-
 const LockIcon = ({ className = "" }) => (
   <svg className={`w-6 h-6 ${className}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -65,7 +59,7 @@ function RegisterPageContent() {
   const urlError = searchParams.get("error");
 
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [studentId, setStudentId] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -91,18 +85,13 @@ function RegisterPageContent() {
       return;
     }
 
-    if (!email.includes("@")) {
-      setError("Please enter a valid email address");
-      return;
-    }
-
     setIsLoading(true);
 
     try {
       const response = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), password }),
+        body: JSON.stringify({ name: name.trim(), password, studentId: studentId.trim() || undefined }),
       });
 
       const data = await response.json();
@@ -182,15 +171,14 @@ function RegisterPageContent() {
               iconPosition="left"
             />
             <PremiumInput
-              id="email"
-              label="Email Address"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              placeholder="student@school.edu"
-              icon={<MailIcon />}
+              id="studentId"
+              label="Student ID (optional)"
+              type="text"
+              value={studentId}
+              onChange={(e) => setStudentId(e.target.value)}
+              autoComplete="username"
+              placeholder="3-digit ID, e.g. 007"
+              icon={<UserPlusIcon />}
               iconPosition="left"
             />
             <div className="relative">
@@ -262,7 +250,7 @@ function RegisterPageContent() {
             </div>
             <div className="space-y-3 text-sm text-white/70">
               <p>
-                <strong className="text-white">Students:</strong> Use your pre-assigned Student ID (001-300) to sign in at <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">/login/student</code>
+                <strong className="text-white">Students:</strong> Sign in with your Student ID (001-300) and password at <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">/login/student</code>
               </p>
               <p>
                 <strong className="text-white">Teachers:</strong> Contact the administrator for admin credentials at <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">/login/teacher</code>

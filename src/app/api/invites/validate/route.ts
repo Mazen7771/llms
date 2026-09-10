@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
       where: { token },
       include: {
         User_Invite_invitedByIdToUser: {
-          select: { id: true, name: true, email: true },
+          select: { id: true, name: true },
         },
       },
     });

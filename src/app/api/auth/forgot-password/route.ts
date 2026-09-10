@@ -5,22 +5,22 @@ import crypto from "crypto";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email } = body;
+    const { studentId } = body;
 
-    if (!email) {
+    if (!studentId) {
       return NextResponse.json(
-        { error: "Email is required" },
+        { error: "Student ID is required" },
         { status: 400 }
       );
     }
 
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { studentId },
     });
 
-    // Always return success to prevent email enumeration
+    // Always return success to prevent enumeration
     if (!user) {
-      return NextResponse.json({ message: "If the email exists, a reset link has been sent" });
+      return NextResponse.json({ message: "If the account exists, a reset has been issued" });
     }
 
     // Generate reset token
@@ -35,13 +35,13 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // TODO: Send email with reset link
+    // TODO: Send a reset link via the teacher/admin (no email system exists).
     // const resetUrl = `${process.env.NEXTAUTH_URL}/reset-password?token=${resetToken}`;
-    // await sendEmail(user.email, "Password Reset", `Reset your password: ${resetUrl}`);
+    // Teachers deliver the reset link to the student directly.
 
-    console.log(`Password reset token for ${email}: ${resetToken}`);
+    console.log(`Password reset token generated for student ${studentId}`);
 
-    return NextResponse.json({ message: "If the email exists, a reset link has been sent" });
+    return NextResponse.json({ message: "If the account exists, a reset has been issued" });
   } catch (error) {
     console.error("Forgot password error:", error);
     return NextResponse.json(

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
  * ONE-OFF: categorize the 300 students into BOTH / BIOLOGY / CHEMISTRY access
- * groups and emit per-group roster CSVs (studentId, name, email, password).
+ * groups and emit per-group roster CSVs (studentId, name, password).
  *
  * Usage:
  *   node scripts/assign-subject-access.cjs \
@@ -105,14 +105,14 @@ async function main() {
     console.log(`  ${g.access}: updated ${res.rowCount}/${g.ids.length}`);
   }
 
-  // 2) Pull name/email from the DB for roster rows.
+  // 2) Pull name from the DB for roster rows.
   const allIds = groups.flatMap((g) => g.ids);
-  const rosterByAccess = new Map(); // access -> array of { studentId, name, email, password }
+  const rosterByAccess = new Map(); // access -> array of { studentId, name, password }
   for (const g of groups) {
     rosterByAccess.set(g.access, []);
     if (g.ids.length === 0) continue;
     const res = await client.query(
-      'SELECT "studentId", name, email FROM "User" WHERE "studentId" = ANY($1::text[]) ORDER BY "studentId"',
+      'SELECT "studentId", name FROM "User" WHERE "studentId" = ANY($1::text[]) ORDER BY "studentId"',
       [g.ids]
     );
     const found = new Set();
@@ -121,7 +121,6 @@ async function main() {
       rosterByAccess.get(g.access).push({
         studentId: row.studentId,
         name: row.name ?? '',
-        email: row.email ?? '',
         password: password ?? '',
       });
       found.add(row.studentId);
@@ -136,10 +135,10 @@ async function main() {
   // 3) Emit CSVs.
   const outDir = path.join(ROOT, 'student-rosters');
   fs.mkdirSync(outDir, { recursive: true });
-  const header = ['studentId', 'name', 'email', 'password'];
+  const header = ['studentId', 'name', 'password'];
   for (const g of groups) {
     const rows = rosterByAccess.get(g.access).map((r) =>
-      [r.studentId, r.name, r.email, r.password].map(csvEscape).join(',')
+      [r.studentId, r.name, r.password].map(csvEscape).join(',')
     );
     const file = path.join(outDir, `students-${g.access.toLowerCase()}.csv`);
     fs.writeFileSync(file, header.join(',') + '\n' + rows.join('\n') + '\n');

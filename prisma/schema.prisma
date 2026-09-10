@@ -274,22 +274,34 @@ model Unit {
   @@index([subjectId])
 }
 
+model ResultFile {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  fileKey      String
+  fileName     String
+  fileType     String
+  fileSize     Int
+  uploadedById String   @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  User         User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([uploadedById])
+}
+
 model User {
-  id                              String         @id
-  email                           String         @unique
-  passwordHash                    String
-  role                            Role           @default(STUDENT)
-  name                            String?
-  emailVerifiedAt                 DateTime?
-  createdAt                       DateTime       @default(now())
-  updatedAt                       DateTime
-  emailVerifyToken                String?        @unique
-  emailVerifyExpires              DateTime?
-  passwordResetToken              String?        @unique
-  passwordResetExpires            DateTime?
-  studentId                       String?        @unique
-  accountStatus                   AccountStatus  @default(ACTIVE)
-  subjectAccess                   SubjectAccess  @default(BOTH)
+  id                      String        @id
+  passwordHash            String
+  role                    Role          @default(STUDENT)
+  name                    String?
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime
+  passwordResetToken      String?       @unique
+  passwordResetExpires    DateTime?
+  studentId               String?       @unique
+  accountStatus           AccountStatus @default(ACTIVE)
+  subjectAccess           SubjectAccess @default(BOTH)
   Announcement                    Announcement[]
   AuditLog                        AuditLog[]
   Invite_Invite_invitedByIdToUser Invite[]       @relation("Invite_invitedByIdToUser")
@@ -300,6 +312,7 @@ model User {
   QuizAttempt                     QuizAttempt[]
   Recording                       Recording[]
   Resource                        Resource[]
+  ResultFile                      ResultFile[]
 
   @@index([role, studentId])
 }

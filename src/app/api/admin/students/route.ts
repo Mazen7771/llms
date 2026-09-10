@@ -20,7 +20,6 @@ export async function GET(request: NextRequest) {
     if (search) {
       where.OR = [
         { name: { contains: search, mode: "insensitive" } },
-        { email: { contains: search, mode: "insensitive" } },
         { studentId: { contains: search, mode: "insensitive" } },
       ];
     }
@@ -37,7 +36,6 @@ export async function GET(request: NextRequest) {
         select: {
           id: true,
           name: true,
-          email: true,
           studentId: true,
           accountStatus: true,
           createdAt: true,
@@ -65,15 +63,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { email, name, studentId, password } = body;
+    const { name, studentId, password } = body;
 
-    if (!email || !password) {
-      return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
-    }
-
-    const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) {
-      return NextResponse.json({ error: "Email already exists" }, { status: 400 });
+    if (!password) {
+      return NextResponse.json({ error: "Password is required" }, { status: 400 });
     }
 
     if (studentId) {
@@ -89,7 +82,6 @@ export async function POST(request: NextRequest) {
     const user = await prisma.user.create({
       data: {
         id: crypto.randomUUID(),
-        email,
         name,
         studentId,
         passwordHash,

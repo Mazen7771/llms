@@ -10,10 +10,13 @@ declare module "next-auth" {
       studentId: string | null;
       accountStatus: AccountStatus;
       subjectAccess: SubjectAccess;
-    } & DefaultSession["user"];
+      name: string | null;
+    };
   }
 
-  interface User extends DefaultUser {
+  interface User {
+    id: string;
+    name: string | null;
     role: Role;
     studentId: string | null;
     accountStatus: AccountStatus;

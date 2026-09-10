@@ -18,7 +18,7 @@ export async function GET(
     // Verify student exists and is a student
     const student = await prisma.user.findUnique({
       where: { id: studentId },
-      select: { id: true, name: true, email: true, role: true },
+      select: { id: true, name: true, studentId: true, role: true },
     });
 
     if (!student || student.role !== "STUDENT") {
@@ -156,7 +156,7 @@ export async function GET(
       student: {
         id: student.id,
         name: student.name,
-        email: student.email,
+        studentId: student.studentId,
       },
       subjects: subjectsWithProgress,
     });

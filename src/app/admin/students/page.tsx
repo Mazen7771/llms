@@ -16,7 +16,6 @@ interface Student {
   id: string;
   studentId: string | null;
   name: string | null;
-  email: string;
   accountStatus: "ACTIVE" | "DISABLED";
   _count: {
     Progress: number;
@@ -75,8 +74,8 @@ function AdminStudentsPageContent() {
 
   const filteredStudents = students.filter((s) => {
     const q = search.toLowerCase();
-    const displayId = s.studentId || s.email.replace("student", "").replace("@lms.local", "").replace(/^0+/, "");
-    return s.name?.toLowerCase().includes(q) || s.email.toLowerCase().includes(q) || displayId.includes(q);
+    const displayId = s.studentId || "";
+    return s.name?.toLowerCase().includes(q) || displayId.includes(q);
   });
 
   const formatDate = (dateStr: string) => {
@@ -142,7 +141,7 @@ function AdminStudentsPageContent() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, email, or Student ID (001-300)"
+              placeholder="Search by name or Student ID (001-300)"
               className="pl-10"
             />
             <div className="absolute left-3 top-[38px] text-gray-400 pointer-events-none" aria-hidden="true">
@@ -174,7 +173,6 @@ function AdminStudentsPageContent() {
                   <TableRow>
                     <TableHead scope="col">Student ID</TableHead>
                     <TableHead scope="col">Name</TableHead>
-                    <TableHead scope="col">Email</TableHead>
                     <TableHead scope="col">Status</TableHead>
                     <TableHead scope="col">Topics Viewed</TableHead>
                     <TableHead scope="col">Quizzes Taken</TableHead>
@@ -184,13 +182,12 @@ function AdminStudentsPageContent() {
                 </TableHeader>
                 <TableBody>
                   {filteredStudents.map((student) => {
-                    const displayId = student.studentId || student.email.replace("student", "").replace("@lms.local", "");
+                    const displayId = student.studentId || student.name || student.id;
                     const isActive = student.accountStatus === "ACTIVE";
                     return (
                       <TableRow key={student.id}>
                         <TableCell className="font-mono font-medium text-primary">{displayId}</TableCell>
                         <TableCell className="font-medium">{student.name || "—"}</TableCell>
-                        <TableCell className="font-mono text-sm">{student.email}</TableCell>
                         <TableCell>
                           <Badge variant={isActive ? "success" : "error"} size="sm">
                             {isActive ? "Active" : "Disabled"}
@@ -239,9 +236,6 @@ function AdminStudentsPageContent() {
           <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
             <p>
               <strong>Student IDs:</strong> 001 through 300 (pre-generated, no registration needed)
-            </p>
-            <p>
-              <strong>Email Format:</strong> student001@lms.local, student002@lms.local, ..., student300@lms.local
             </p>
             <p>
               <strong>Passwords:</strong> Unique random passwords generated for each student (see{" "}

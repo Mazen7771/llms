@@ -21,7 +21,7 @@ const conn = m[1].replace(/^["']|["']$/g, '').trim();
   console.log('accountStatus:', JSON.stringify(status.rows));
 
   const sample = await c.query(
-    `SELECT "studentId", email, role, "accountStatus",
+    `SELECT "studentId", role, "accountStatus",
             ("passwordHash" IS NOT NULL AND "passwordHash" <> '') AS has_hash,
             LENGTH("passwordHash") AS hash_len, "subjectAccess"
      FROM "User" WHERE "studentId" IN ('001','002','003')`

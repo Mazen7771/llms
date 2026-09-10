@@ -7,25 +7,27 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     // Security: self-registration is always a STUDENT account. `role` is
     // intentionally ignored so a caller cannot mint a TEACHER account.
-    const { email, password, name, studentId } = body;
+    const { password, name, studentId } = body;
 
-    if (!email || !password) {
+    if (!password || !name) {
       return NextResponse.json(
-        { error: "Email and password are required" },
+        { error: "Name and password are required" },
         { status: 400 }
       );
     }
 
-    // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
+    // Check if a student already holds this studentId
+    if (studentId) {
+      const existingUser = await prisma.user.findUnique({
+        where: { studentId },
+      });
 
-    if (existingUser) {
-      return NextResponse.json(
-        { error: "Email already registered" },
-        { status: 400 }
-      );
+      if (existingUser) {
+        return NextResponse.json(
+          { error: "Student ID already registered" },
+          { status: 400 }
+        );
+      }
     }
 
     // Hash password
@@ -35,7 +37,6 @@ export async function POST(request: NextRequest) {
     const user = await prisma.user.create({
       data: {
         id: crypto.randomUUID(),
-        email,
         passwordHash,
         name,
         role: "STUDENT",
@@ -45,7 +46,6 @@ export async function POST(request: NextRequest) {
       },
       select: {
         id: true,
-        email: true,
         name: true,
         role: true,
         studentId: true,

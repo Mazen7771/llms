@@ -34,13 +34,13 @@ export async function GET() {
       where: { role: "STUDENT" },
       orderBy: { createdAt: "desc" },
       take: 5,
-      select: { id: true, name: true, email: true, studentId: true, createdAt: true },
+      select: { id: true, name: true, studentId: true, createdAt: true },
     });
 
     const recentActivity = await prisma.auditLog.findMany({
       orderBy: { createdAt: "desc" },
       take: 10,
-      include: { User: { select: { name: true, email: true } } },
+      include: { User: { select: { name: true, role: true } } },
     });
 
     return NextResponse.json({

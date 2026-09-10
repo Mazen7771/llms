@@ -11,7 +11,7 @@
  * If a teacher already exists, its password is reset to the value below
  * (or $TEACHER_PASSWORD if provided) so you can always get back in.
  */
-import { PrismaClient, Role, AccountStatus } from "@/generated/prisma/client";
+import { PrismaClient, Role, AccountStatus, SubjectAccess } from "@/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import bcrypt from "bcryptjs";
@@ -25,24 +25,22 @@ async function main() {
   const passwordHash = await bcrypt.hash(password, 12);
 
   const teacher = await prisma.user.upsert({
-    where: { email: "sulafa@school.edu" },
+    where: { studentId: "0" },
     update: {
       passwordHash,
       role: Role.TEACHER,
       name: "Miss Sulafa",
-      emailVerifiedAt: new Date(),
-      studentId: "0",
       accountStatus: AccountStatus.ACTIVE,
+      subjectAccess: SubjectAccess.BOTH,
     },
     create: {
       id: crypto.randomUUID(),
-      email: "sulafa@school.edu",
       passwordHash,
       role: Role.TEACHER,
       name: "Miss Sulafa",
-      emailVerifiedAt: new Date(),
       studentId: "0",
       accountStatus: AccountStatus.ACTIVE,
+      subjectAccess: SubjectAccess.BOTH,
       createdAt: new Date(),
       updatedAt: new Date(),
     },

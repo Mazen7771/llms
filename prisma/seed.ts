@@ -60,22 +60,18 @@ async function main() {
   const adminPasswordHash = await bcrypt.hash(adminPassword, 12)
 
   const sulafa = await prisma.user.upsert({
-    where: { email: 'sulafa@school.edu' },
+    where: { studentId: '0' },
     update: {
       passwordHash: adminPasswordHash,
       role: Role.TEACHER,
       name: 'Miss Sulafa',
-      emailVerifiedAt: new Date(),
-      studentId: '0',
       accountStatus: AccountStatus.ACTIVE,
     },
     create: {
       id: crypto.randomUUID(),
-      email: 'sulafa@school.edu',
       passwordHash: adminPasswordHash,
       role: Role.TEACHER,
       name: 'Miss Sulafa',
-      emailVerifiedAt: new Date(),
       studentId: '0',
       accountStatus: AccountStatus.ACTIVE,
       createdAt: new Date(),
@@ -83,7 +79,8 @@ async function main() {
     },
   })
 
-  console.log(`✅ Miss Sulafa created: ${sulafa.email} (ID: 0)`)
+  console.log(`✅ Miss Sulafa created (ID: 0)`)
+  console.log(`   Name: ${sulafa.name}`)
 
   // Create 300 Student Accounts with sequential studentId (001-300)
   console.log('🎓 Creating 300 student accounts...')
@@ -92,29 +89,24 @@ async function main() {
 
   for (let i = 1; i <= 300; i++) {
     const studentId = i.toString().padStart(3, '0')
-    const email = `student${studentId}@lms.local`
     const password = generatePassword()
     const name = `Student ${studentId}`
 
     const passwordHash = await bcrypt.hash(password, 12)
 
     await prisma.user.upsert({
-      where: { email },
+      where: { studentId },
       update: {
         passwordHash,
         role: Role.STUDENT,
         name,
-        emailVerifiedAt: new Date(),
-        studentId,
         accountStatus: AccountStatus.ACTIVE,
       },
       create: {
         id: crypto.randomUUID(),
-        email,
         passwordHash,
         role: Role.STUDENT,
         name,
-        emailVerifiedAt: new Date(),
         studentId,
         accountStatus: AccountStatus.ACTIVE,
         createdAt: new Date(),

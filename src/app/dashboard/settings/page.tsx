@@ -29,7 +29,6 @@ export default function SettingsPage() {
     reducedMotion: false,
   });
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -39,7 +38,6 @@ export default function SettingsPage() {
       .then(async ([profileRes, prefRes]) => {
         const [profile, prefs] = await Promise.all([profileRes.json(), prefRes.json()]);
         setName(profile?.name || "");
-        setEmail(profile?.email || "");
         if (prefs) setPreferences(prefs);
       })
       .catch(() => {
@@ -55,7 +53,7 @@ export default function SettingsPage() {
       const profileRes = await fetch("/api/user/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email }),
+        body: JSON.stringify({ name }),
       });
       const prefRes = await fetch("/api/user/preferences", {
         method: "PUT",
@@ -126,14 +124,6 @@ export default function SettingsPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Your full name"
-              />
-              <PremiumInput
-                id="email"
-                label="Email Address"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
               />
             </div>
           </GlassCard>

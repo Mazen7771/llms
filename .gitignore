@@ -70,3 +70,4 @@ scripts/test-live-login.cjs
 scripts/prove-login.cjs
 scripts/debug-session.cjs
 reports/
+/student-rosters/

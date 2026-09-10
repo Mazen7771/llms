@@ -14,8 +14,8 @@
 //
 // WHAT IT DOES
 //   For each row in credentials/STUDENT_CREDENTIALS.csv (studentId,password,name):
-//     - If the user does not exist -> creates them (role STUDENT, ACTIVE, email
-//       student<id>@lms.local). subjectAccess defaults to BOTH.
+//     - If the user does not exist -> creates them (role STUDENT, ACTIVE).
+//       subjectAccess defaults to BOTH. (No email column — removed from schema.)
 //     - If the user exists -> sets passwordHash from the CSV password, forces
 //       role=STUDENT and accountStatus=ACTIVE. Does NOT touch subjectAccess,
 //       so any per-student subject assignment already done survives.
@@ -62,23 +62,20 @@ async function main() {
   let created = 0, updated = 0, errors = 0;
   for (let i = 0; i < students.length; i++) {
     const { studentId, password, name } = students[i];
-    const email = `student${studentId}@lms.local`;
     try {
       const hash = await bcrypt.hash(password, SALT_ROUNDS);
       const res = await client.query(
         `INSERT INTO "User"
-            (id, email, "passwordHash", role, name, "emailVerifiedAt", "studentId", "accountStatus", "subjectAccess", "createdAt", "updatedAt")
-         VALUES (gen_random_uuid(), $1, $2, 'STUDENT', $3, now(), $4, 'ACTIVE', 'BOTH', now(), now())
+            (id, "passwordHash", role, name, "studentId", "accountStatus", "subjectAccess", "createdAt", "updatedAt")
+         VALUES (gen_random_uuid(), $1, 'STUDENT', $2, $3, 'ACTIVE', 'BOTH', now(), now())
          ON CONFLICT ("studentId")
          DO UPDATE SET "passwordHash" = EXCLUDED."passwordHash",
                        name = EXCLUDED.name,
-                       email = EXCLUDED.email,
                        role = 'STUDENT',
                        "accountStatus" = 'ACTIVE',
-                       "emailVerifiedAt" = now(),
                        "updatedAt" = now()
          RETURNING ("xmax" = 0) AS was_inserted`,
-        [email, hash, name, studentId]
+        [hash, name, studentId]
       );
       if (res.rows[0].was_inserted) created++; else updated++;
     } catch (e) {

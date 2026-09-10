@@ -14,12 +14,10 @@ export async function GET() {
       where: { id: session.user.id },
       select: {
         id: true,
-        email: true,
         name: true,
         role: true,
         studentId: true,
         accountStatus: true,
-        emailVerifiedAt: true,
         createdAt: true,
       },
     });
@@ -43,23 +41,13 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, email } = body;
-
-    if (email) {
-      const existing = await prisma.user.findFirst({
-        where: { email, NOT: { id: session.user.id } },
-      });
-      if (existing) {
-        return NextResponse.json({ error: "Email already in use" }, { status: 400 });
-      }
-    }
+    const { name } = body;
 
     const user = await prisma.user.update({
       where: { id: session.user.id },
-      data: { name, email },
+      data: name ? { name } : {},
       select: {
         id: true,
-        email: true,
         name: true,
         role: true,
         studentId: true,

@@ -53,7 +53,7 @@ interface SubjectProgress {
 interface Student {
   id: string;
   name: string | null;
-  email: string;
+  studentId: string | null;
 }
 
 interface ProgressData {
@@ -224,7 +224,7 @@ export default function StudentProgressPage() {
           <Link href="/admin/students" className="hover:text-primary">Students</Link>
           <ChevronLeft className="w-4 h-4" />
           <Link href={`/admin/students/${studentId}`} className="hover:text-primary">
-            {student.name || student.email}
+            {student.name || student.studentId || "Student"}
           </Link>
           <ChevronLeft className="w-4 h-4" />
           <span className="text-gray-900 dark:text-white font-medium">Progress</span>
@@ -233,7 +233,7 @@ export default function StudentProgressPage() {
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
-            <Badge variant="outline">{student.name || student.email}</Badge>
+            <Badge variant="outline">{student.name || student.studentId || "Student"}</Badge>
           </div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Learning Progress</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2">Detailed topic-by-topic progress tracking</p>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { put } from "@vercel/blob/client";
 import Link from "next/link";
 import { Plus, Edit, Trash2, ChevronRight, Loader2, FolderOpen, FileText, Video, HelpCircle, Upload, Download, Eye, X, Paperclip, FileVideo, Save, RotateCcw, Brain, Zap } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -502,7 +503,42 @@ export default function AdminContentPage() {
     };
 
     try {
-      // Small files: single request with upload progress.
+      // Preferred path: direct browser → Vercel Blob upload. Bypasses the
+      // serverless body-size limit AND the Neon DB entirely (which is at
+      // 96% of its free tier and can't stage large uploads). The browser
+      // requests a short-lived scoped token, then PUTs the file straight to
+      // Blob using multipart (handles 40MB+ files with parallel parts).
+      try {
+        const tokenRes = await fetch("/api/upload/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: file.name }),
+        });
+        const tokenData = await tokenRes.json().catch(() => null);
+
+        if (tokenRes.ok && tokenData?.available && tokenData.clientToken) {
+          const blob = await put(tokenData.pathname, file, {
+            access: "public",
+            token: tokenData.clientToken,
+            multipart: true,
+            onUploadProgress: ({ loaded, total }) => {
+              if (onProgress && total > 0) {
+                onProgress(Math.round((loaded / total) * 100));
+              }
+            },
+          });
+          console.log(`Blob upload complete: ${blob.url}`);
+          return {
+            fileKey: blob.url,
+            fileType: file.type || "application/octet-stream",
+            fileSize: file.size,
+          };
+        }
+      } catch (blobErr) {
+        console.warn("Blob direct upload unavailable, falling back to chunked upload:", blobErr);
+      }
+
+      // Fallback: small files via single request with upload progress.
       if (totalChunks <= 1) {
         const formData = new FormData();
         formData.append("file", file);

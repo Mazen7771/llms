@@ -347,9 +347,12 @@ export default function TopicDetailPage() {
                     <Button variant="outline" size="sm" onClick={() => window.open(`/api/files/${encodeURIComponent(resource.fileKey)}`, "_blank")}>
                       <Eye className="w-4 h-4 mr-1" /> View
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => window.open(`/api/files/${encodeURIComponent(resource.fileKey)}?download=true`, "_blank")}>
-                      <Download className="w-4 h-4 mr-1" /> Download
-                    </Button>
+                    {/* Chemistry resources are view-only — no download button */}
+                    {Subject.slug !== "chemistry" && (
+                      <Button variant="outline" size="sm" onClick={() => window.open(`/api/files/${encodeURIComponent(resource.fileKey)}?download=true`, "_blank")}>
+                        <Download className="w-4 h-4 mr-1" /> Download
+                      </Button>
+                    )}
                   </div>
                 </GlassCard>
               ))}

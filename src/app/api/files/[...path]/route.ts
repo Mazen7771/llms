@@ -49,6 +49,16 @@ export async function GET(
     if (session.user.role === "STUDENT" && resource) {
       // Students can access all resources (no subject restriction in current schema)
       // If you add subject restrictions later, add check here
+
+      // Chemistry subject resources are view-only: block the download=true
+      // flag so the content can only be read inline, never saved as a file.
+      const subjectSlug = resource.Topic?.Unit?.Subject?.slug;
+      if (download && subjectSlug === "chemistry") {
+        return NextResponse.json(
+          { error: "Chemistry resources are view-only and cannot be downloaded" },
+          { status: 403 }
+        );
+      }
     }
 
     // DB-backed files (uploaded without Vercel Blob) use a plain key with no

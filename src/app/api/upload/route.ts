@@ -63,9 +63,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, received: index + 1, total });
     }
 
-    // Last chunk arrived — reassemble all chunks in order and persist the file.
-    // Fetch chunks one at a time to avoid loading everything into memory at
-    // once (previously caused timeouts on large files with many chunks).
+    // Last chunk arrived — reassemble all chunks and persist the file.
+    // When Vercel Blob is configured, write the assembled file there instead
+    // of the DB so large files don't eat Neon's limited storage.
     const chunks = await prisma.uploadChunk.findMany({
       where: { key: uploadKey },
       orderBy: { index: "asc" },
@@ -89,12 +89,32 @@ export async function POST(request: NextRequest) {
     // Clean up chunks immediately after reassembly.
     await prisma.uploadChunk.deleteMany({ where: { key: uploadKey } });
 
+    // Write to Vercel Blob when configured; otherwise fall back to DB.
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      const blob = await put(name, new Blob([full], { type: contentType }), {
+        access: "public",
+        addRandomSuffix: true,
+        contentType,
+      });
+
+      console.log(`Upload complete (blob): ${name} (${(full.length / 1024 / 1024).toFixed(1)}MB) → ${blob.url}`);
+
+      return NextResponse.json({
+        fileKey: blob.url,
+        fileType: contentType,
+        fileSize: full.length,
+        url: blob.url,
+        pathname: blob.pathname,
+      });
+    }
+
+    // DB fallback: persist the raw bytes for small-file / no-Blob deployments.
     const fileKey = crypto.randomUUID();
     await prisma.uploadedFile.create({
       data: { key: fileKey, data: full, contentType, size: full.length },
     });
 
-    console.log(`Upload complete: ${name} (${(full.length / 1024 / 1024).toFixed(1)}MB) → ${fileKey}`);
+    console.log(`Upload complete (db): ${name} (${(full.length / 1024 / 1024).toFixed(1)}MB) → ${fileKey}`);
 
     return NextResponse.json({
       fileKey,

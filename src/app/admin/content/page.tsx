@@ -413,12 +413,15 @@ export default function AdminContentPage() {
     }
   }, [expandedTopic, fetchResources, fetchRecordings]);
 
-  // Upload resource file with progress tracking. Files larger than the chunk
-  // threshold are split into ordered chunks so each request stays under
-  // Vercel's ~4.5MB serverless request-body limit; the server reassembles them.
+  // Upload resource file with progress tracking. Preferred path is a direct
+  // browser → Vercel Blob upload (streams in parallel parts, zero Neon usage).
+  // Only small files (≤1 chunk) may fall back to the server round-trip path;
+  // large files never touch the DB-chunked path — it depends on Neon writes
+  // the free tier can't stage.
   const uploadResourceFile = async (file: File, onProgress?: (progress: number) => void): Promise<{ fileKey: string; fileType: string; fileSize: number } | null> => {
-    const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB — small enough for Neon DB writes reliably
+    const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB — small-file threshold for the fallback path
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const isSmallFile = totalChunks <= 1;
     const UPLOAD_TIMEOUT_MS = 180_000; // 3 min per chunk (cold starts can be slow)
     const MAX_RETRIES = 3;
     const STALL_TIMEOUT_MS = 60_000; // 60s with no progress → fail
@@ -534,53 +537,28 @@ export default function AdminContentPage() {
             fileSize: file.size,
           };
         }
-      } catch (blobErr) {
-        console.warn("Blob direct upload unavailable, falling back to chunked upload:", blobErr);
+      } catch (blobErr: any) {
+        // Blob direct upload failed — do NOT silently fall back to the DB
+        // chunked path for large files: it writes chunks into the Neon DB,
+        // which is near its free-tier cap and was the original failure mode
+        // (upload died at ~9%). Surface the real Blob error instead so the
+        // failure is visible and nothing touches the DB.
+        if (isSmallFile) {
+          console.warn("Blob upload unavailable for small file, using server path:", blobErr?.message);
+        } else {
+          throw new Error(`Upload failed: ${blobErr?.message || "Vercel Blob upload error"}`);
+        }
       }
 
-      // Fallback: small files via single request with upload progress.
-      if (totalChunks <= 1) {
+      // Fallback (small files only, ≤1 chunk): single server-side request.
+      // The server stores the file in Vercel Blob (never Neon) when
+      // BLOB_READ_WRITE_TOKEN is set.
+      if (isSmallFile) {
         const formData = new FormData();
         formData.append("file", file);
         return await postFormWithRetry(formData, onProgress);
       }
 
-      // Large files: upload chunks in order; the last one triggers reassembly
-      // on the server and returns { fileKey, fileType, fileSize }.
-      const uploadKey = crypto.randomUUID();
-      let uploadedBytes = 0;
-
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(file.size, start + CHUNK_SIZE);
-        const chunk = file.slice(start, end);
-
-        const formData = new FormData();
-        formData.append("file", chunk);
-        formData.append("key", uploadKey);
-        formData.append("index", String(i));
-        formData.append("total", String(totalChunks));
-        formData.append("name", file.name);
-        formData.append("type", file.type || "application/octet-stream");
-        formData.append("finalize", String(i === totalChunks - 1));
-
-        const chunkProgress = (pct: number) => {
-          const totalPct = Math.round(((uploadedBytes + (end - start) * pct / 100) / file.size) * 100);
-          if (onProgress) onProgress(totalPct);
-        };
-
-        const res = await postFormWithRetry(formData, onProgress ? chunkProgress : undefined);
-        if (!res) {
-          throw new Error("Upload returned an empty response");
-        }
-        uploadedBytes += end - start;
-        if (onProgress) {
-          onProgress(Math.round((uploadedBytes / file.size) * 100));
-        }
-        if (i === totalChunks - 1) {
-          return res;
-        }
-      }
       return null;
     } catch (error) {
       console.error("File upload error:", error);

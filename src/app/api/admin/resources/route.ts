@@ -62,39 +62,50 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Topic not found" }, { status: 404 });
     }
 
-    try {
-      const resource = await prisma.resource.create({
-        data: {
-          id: crypto.randomUUID(),
-          topicId,
-          type,
-          title,
-          description,
-          fileKey,
-          fileType,
-          fileSize,
-          uploadedById: session.user.id,
-          updatedAt: new Date(),
-        },
-      });
+    // Pool is capped at max:1 with a 5s connection timeout; a cold start or
+    // throttled Neon connection can throw a transient pool timeout. The blob
+    // is already on Vercel Blob at this point — the file must NOT be deleted
+    // on a create failure (it used to be, destroying the user's 42MB upload).
+    // Orphaned blobs are cleaned by a future sweep, not inline here.
+    const RETRYABLE = /timeout|timed out|connection|pool|ECONNRESET|socket hang up/i;
+    const TRANSIENT_CODES = ["P1001", "P1008", "P1017", "P2024", "P2034"];
 
-      return NextResponse.json({ resource });
-    } catch (error) {
-      // If the DB record fails after the file was uploaded, delete the blob
-      // so it doesn't become an orphaned file with no database reference.
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        const { del } = await import("@vercel/blob");
-        if (fileKey && typeof fileKey === "string" && fileKey.startsWith("https://")) {
-          await del(fileKey);
-        }
-      } catch {
-        // Cleanup is best-effort; the metadata error is the primary signal.
+        const resource = await prisma.resource.create({
+          data: {
+            id: crypto.randomUUID(),
+            topicId,
+            type,
+            title,
+            description,
+            fileKey,
+            fileType,
+            fileSize,
+            uploadedById: session.user.id,
+            updatedAt: new Date(),
+          },
+        });
+
+        console.log(`Create resource OK: id=${resource.id} fileKey=${String(fileKey).slice(0, 60)}…`);
+        return NextResponse.json({ resource });
+      } catch (error) {
+        lastError = error;
+        const e = error as { code?: string; message?: string };
+        const transient =
+          (e.code && TRANSIENT_CODES.includes(e.code)) ||
+          (typeof e.message === "string" && RETRYABLE.test(e.message));
+        if (!transient || attempt === 2) break;
+        await new Promise((r) => setTimeout(r, 300 * attempt)); // short backoff, then retry
       }
-      throw error;
     }
+
+    throw lastError;
   } catch (error) {
-    console.error("Create resource error:", error);
-    return NextResponse.json({ error: "Failed to create resource" }, { status: 500 });
+    const detail = error instanceof Error ? error.message : "unknown error";
+    console.error("Create resource error:", detail);
+    return NextResponse.json({ error: `Failed to create resource: ${detail}` }, { status: 500 });
   }
 }
 

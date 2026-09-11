@@ -520,6 +520,8 @@ export default function AdminContentPage() {
         const tokenData = await tokenRes.json().catch(() => null);
 
         if (tokenRes.ok && tokenData?.available && tokenData.clientToken) {
+          console.log("[UPLOAD] Starting Blob put: pathname=%s size=%d isSmallFile=%s chunks=%d",
+            tokenData.pathname, file.size, isSmallFile, totalChunks);
           const blob = await put(tokenData.pathname, file, {
             access: "public",
             token: tokenData.clientToken,
@@ -530,7 +532,7 @@ export default function AdminContentPage() {
               }
             },
           });
-          console.log(`Blob upload complete: ${blob.url}`);
+          console.log("[UPLOAD] Blob put complete: url=%s", blob.url);
           return {
             fileKey: blob.url,
             fileType: file.type || "application/octet-stream",
@@ -584,6 +586,8 @@ export default function AdminContentPage() {
       }
 
       // Create resource record
+      console.log("[CREATE] POST /api/admin/resources topicId=%s fileKey=%s fileSize=%d type=%s",
+        topicId, String(fileInfo.fileKey).slice(0, 60), fileInfo.fileSize, newResource.type);
       const res = await fetch("/api/admin/resources", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -600,12 +604,14 @@ export default function AdminContentPage() {
 
       if (res.ok) {
         const data = await res.json();
+        console.log("[CREATE] OK resourceId=%s topicId=%s", data.resource?.id, topicId);
         setTopicResources(prev => ({ ...prev, [topicId]: [...(prev[topicId] || []), data.resource] }));
         setShowResourceForm(null);
         setNewResource({ title: "", description: "", type: "NOTE", file: null });
         showToast("success", "Resource created successfully");
       } else {
         const data = await res.json();
+        console.error("[CREATE] FAILED HTTP %d: %s", res.status, data.error);
         showToast("error", data.error || "Failed to create resource");
       }
     } catch (error: any) {

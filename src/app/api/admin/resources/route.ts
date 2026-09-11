@@ -43,6 +43,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Guard: session.user.id must exist for teacher sessions (FK on Resource.uploadedById).
+    if (!session.user.id) {
+      console.error("Create resource: session.user.id is undefined — stale or invalid teacher session");
+      return NextResponse.json({ error: "Invalid session: no user ID" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { topicId, type, title, description, fileKey, fileType, fileSize } = body;
 
@@ -70,6 +76,10 @@ export async function POST(request: NextRequest) {
     const RETRYABLE = /timeout|timed out|connection|pool|ECONNRESET|socket hang up/i;
     const TRANSIENT_CODES = ["P1001", "P1008", "P1017", "P2024", "P2034"];
 
+    // Log the create attempt for production debugging.
+    console.log("[CREATE RESOURCE] topicId=%s userId=%s fileKey=%s fileSize=%s type=%s",
+      topicId, session.user.id, String(fileKey).slice(0, 60), fileSize, type);
+
     let lastError: unknown;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
@@ -88,7 +98,8 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        console.log(`Create resource OK: id=${resource.id} fileKey=${String(fileKey).slice(0, 60)}…`);
+        console.log("[CREATE RESOURCE] OK id=%s topicId=%s fileKey=%s",
+          resource.id, topicId, String(fileKey).slice(0, 60));
         return NextResponse.json({ resource });
       } catch (error) {
         lastError = error;
@@ -97,14 +108,15 @@ export async function POST(request: NextRequest) {
           (e.code && TRANSIENT_CODES.includes(e.code)) ||
           (typeof e.message === "string" && RETRYABLE.test(e.message));
         if (!transient || attempt === 2) break;
-        await new Promise((r) => setTimeout(r, 300 * attempt)); // short backoff, then retry
+        // Backoff 2s / 5s to exceed Neon pooler cold-start window (5s connectionTimeoutMillis).
+        await new Promise((r) => setTimeout(r, attempt === 1 ? 2000 : 5000));
       }
     }
 
     throw lastError;
   } catch (error) {
     const detail = error instanceof Error ? error.message : "unknown error";
-    console.error("Create resource error:", detail);
+    console.error("[CREATE RESOURCE] ERROR:", detail);
     return NextResponse.json({ error: `Failed to create resource: ${detail}` }, { status: 500 });
   }
 }

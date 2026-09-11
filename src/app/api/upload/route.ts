@@ -20,109 +20,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    const chunkKey = formData.get("key") as string | null;
-    const totalRaw = formData.get("total") as string | null;
-    const indexRaw = formData.get("index") as string | null;
-
-    // Whole-file (single-request) path, used for small files. Chunked uploads
-    // (client splits large files to stay under Vercel's ~4.5MB serverless
-    // request-body limit) send key/index/total fields.
-    const isChunked = Boolean(chunkKey && totalRaw && indexRaw && Number(totalRaw) > 1);
-
-    if (!isChunked) {
-      return await handleWholeFile(file);
-    }
-
-    // Chunked path: store this chunk, then reassemble when the last one arrives.
-    const uploadKey = chunkKey as string;
-    const total = Number(totalRaw);
-    const index = Number(indexRaw);
-    const finalize = formData.get("finalize") === "true";
-    const name = (formData.get("name") as string) || file.name;
-    const contentType = (formData.get("type") as string) || file.type || FALLBACK_CONTENT_TYPE;
-
-    const bytes = Buffer.from(await file.arrayBuffer());
-    await prisma.uploadChunk.create({
-      data: { key: uploadKey, index, data: bytes, name, type: contentType, size: bytes.length },
-    });
-
-    // Periodic cleanup: delete orphaned chunks older than 1 hour.
-    // This prevents the UploadChunk table from growing unbounded when
-    // uploads fail mid-way and the client never sends the final chunk.
-    if (index === 0) {
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-      const cleaned = await prisma.uploadChunk.deleteMany({
-        where: { createdAt: { lt: oneHourAgo } },
-      });
-      if (cleaned.count > 0) {
-        console.log(`Cleaned ${cleaned.count} orphaned upload chunks`);
-      }
-    }
-
-    if (!finalize) {
-      return NextResponse.json({ ok: true, received: index + 1, total });
-    }
-
-    // Last chunk arrived — reassemble all chunks and persist the file.
-    // When Vercel Blob is configured, write the assembled file there instead
-    // of the DB so large files don't eat Neon's limited storage.
-    const chunks = await prisma.uploadChunk.findMany({
-      where: { key: uploadKey },
-      orderBy: { index: "asc" },
-    });
-
-    if (chunks.length !== total) {
-      await prisma.uploadChunk.deleteMany({ where: { key: uploadKey } });
-      return NextResponse.json(
-        { error: `Incomplete upload: got ${chunks.length} of ${total} chunks` },
-        { status: 400 }
-      );
-    }
-
-    // Concatenate chunks sequentially (lower peak memory than Array.map).
-    const parts: Buffer[] = [];
-    for (const chunk of chunks) {
-      parts.push(Buffer.from(chunk.data));
-    }
-    const full = Buffer.concat(parts);
-
-    // Clean up chunks immediately after reassembly.
-    await prisma.uploadChunk.deleteMany({ where: { key: uploadKey } });
-
-    // Write to Vercel Blob when configured; otherwise fall back to DB.
-    if (process.env.BLOB_READ_WRITE_TOKEN) {
-      const blob = await put(name, new Blob([full], { type: contentType }), {
-        access: "public",
-        addRandomSuffix: true,
-        contentType,
-      });
-
-      console.log(`Upload complete (blob): ${name} (${(full.length / 1024 / 1024).toFixed(1)}MB) → ${blob.url}`);
-
-      return NextResponse.json({
-        fileKey: blob.url,
-        fileType: contentType,
-        fileSize: full.length,
-        url: blob.url,
-        pathname: blob.pathname,
-      });
-    }
-
-    // DB fallback: persist the raw bytes for small-file / no-Blob deployments.
-    const fileKey = crypto.randomUUID();
-    await prisma.uploadedFile.create({
-      data: { key: fileKey, data: full, contentType, size: full.length },
-    });
-
-    console.log(`Upload complete (db): ${name} (${(full.length / 1024 / 1024).toFixed(1)}MB) → ${fileKey}`);
-
-    return NextResponse.json({
-      fileKey,
-      fileType: contentType,
-      fileSize: full.length,
-      url: fileKey,
-      pathname: name,
-    });
+    // NOTE: The client (page.tsx) now uploads ALL files directly to Vercel Blob
+    // via a scoped client token (multipart). This server endpoint is only reached
+    // for small files (<=2MB) when the Blob token is unavailable, OR if someone
+    // calls it directly. The old chunked path (key/index/total/finalize) that
+    // wrote to Neon's UploadChunk table has been REMOVED — it was a capacity
+    // bomb for the free-tier DB and is no longer used.
+    return await handleWholeFile(file);
   } catch (error) {
     console.error("File upload error:", error);
     return NextResponse.json({ error: "Failed to upload file" }, { status: 500 });
@@ -141,6 +45,8 @@ async function handleWholeFile(file: File): Promise<NextResponse> {
       addRandomSuffix: true,
     });
 
+    console.log(`Upload complete (blob): ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB) → ${blob.url}`);
+
     return NextResponse.json({
       fileKey: blob.url, // Using the blob URL as fileKey
       fileType: contentType,
@@ -155,8 +61,10 @@ async function handleWholeFile(file: File): Promise<NextResponse> {
   const bytes = Buffer.from(await file.arrayBuffer());
   const key = crypto.randomUUID();
   await prisma.uploadedFile.create({
-    data: { key, data: bytes, contentType, size: bytes.length },
+    data: { key: key, data: bytes, contentType: contentType, size: bytes.length },
   });
+
+  console.log(`Upload complete (db): ${file.name} (${(bytes.length / 1024 / 1024).toFixed(1)}MB) → ${key}`);
 
   return NextResponse.json({
     fileKey: key,

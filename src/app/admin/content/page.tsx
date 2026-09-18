@@ -77,6 +77,15 @@ interface Recording {
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
+// Supabase's API gateway rejects any request to *.supabase.co (including
+// storage uploads to a signed URL) that doesn't carry an `apikey` header,
+// regardless of the one-time `token` already embedded in the signed URL's
+// query string. @supabase/supabase-js adds this header automatically on
+// every request; since this project talks to the signed URL directly with
+// XMLHttpRequest instead of that SDK, it has to be attached by hand here.
+const SUPABASE_ANON_KEY =
+  process.env.NEXT_PUBLIC_vv_SUPABASE_ANON_KEY || "";
+
 const RESOURCE_TYPES = [
   { value: "LESSON", label: "Lesson", icon: "📘" },
   { value: "NOTE", label: "Notes", icon: "📝" },
@@ -835,6 +844,13 @@ export default function AdminContentPage() {
       );
     }
 
+    if (!SUPABASE_ANON_KEY) {
+      throw new Error(
+        "Missing NEXT_PUBLIC_vv_SUPABASE_ANON_KEY. Set it in Vercel " +
+          "project settings and redeploy."
+      );
+    }
+
     onProgress?.(0);
 
     const response = await fetch(
@@ -887,6 +903,17 @@ export default function AdminContentPage() {
           data.signedUrl,
           true
         );
+
+        if (SUPABASE_ANON_KEY) {
+          xhr.setRequestHeader(
+            "apikey",
+            SUPABASE_ANON_KEY
+          );
+          xhr.setRequestHeader(
+            "Authorization",
+            `Bearer ${SUPABASE_ANON_KEY}`
+          );
+        }
 
         xhr.upload.addEventListener(
           "progress",

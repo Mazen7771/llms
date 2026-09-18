@@ -75,6 +75,8 @@ interface Recording {
   createdAt: string;
 }
 
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+
 const RESOURCE_TYPES = [
   { value: "LESSON", label: "Lesson", icon: "📘" },
   { value: "NOTE", label: "Notes", icon: "📝" },
@@ -83,7 +85,6 @@ const RESOURCE_TYPES = [
   { value: "RESOURCE", label: "Resource", icon: "📄" },
 ];
 
-// Helper function to estimate time per question
 function getEstimatedTime(type: string, marks: number): number {
   switch (type) {
     case "MULTIPLE_CHOICE":
@@ -97,9 +98,34 @@ function getEstimatedTime(type: string, marks: number): number {
   }
 }
 
-// Subject create/edit form. Kept at module scope (not inside the page component)
-// so React doesn't treat it as a new component type on every render, which would
-// unmount/remount the inputs and lose focus after each keystroke.
+function getResourceOpenUrl(fileKey: string): string {
+  if (
+    fileKey.startsWith("http://") ||
+    fileKey.startsWith("https://")
+  ) {
+    return fileKey;
+  }
+
+  return `/api/files/${encodeURIComponent(fileKey)}`;
+}
+
+function getResourceDownloadUrl(fileKey: string): string {
+  if (
+    fileKey.startsWith("http://") ||
+    fileKey.startsWith("https://")
+  ) {
+    try {
+      const url = new URL(fileKey);
+      url.searchParams.set("download", "");
+      return url.toString();
+    } catch {
+      return fileKey;
+    }
+  }
+
+  return `/api/files/${encodeURIComponent(fileKey)}?download=true`;
+}
+
 function SubjectForm({
   onSubmit,
   onCancel,
@@ -129,6 +155,7 @@ function SubjectForm({
         placeholder="e.g., Biology"
         required
       />
+
       <Input
         id="slug"
         label="Slug (URL-friendly)"
@@ -137,10 +164,12 @@ function SubjectForm({
         placeholder="e.g., biology"
         required
       />
+
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
+
         <Button type="submit" loading={loading}>
           {isNew ? "Create Subject" : "Save Changes"}
         </Button>
@@ -161,40 +190,50 @@ export default function AdminContentPage() {
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [editSubjectName, setEditSubjectName] = useState("");
   const [editSubjectSlug, setEditSubjectSlug] = useState("");
+
   const [toast, setToast] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
 
-  // Resources/Recordings state
   const [topicResources, setTopicResources] = useState<
     Record<string, Resource[]>
   >({});
+
   const [topicRecordings, setTopicRecordings] = useState<
     Record<string, Recording[]>
   >({});
+
   const [loadingResources, setLoadingResources] = useState<Set<string>>(
     new Set()
   );
+
   const [loadingRecordings, setLoadingRecordings] = useState<Set<string>>(
     new Set()
   );
+
   const [uploadingResource, setUploadingResource] = useState<string | null>(
     null
   );
+
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+
   const [uploadingRecording, setUploadingRecording] = useState<string | null>(
     null
   );
+
   const [showResourceForm, setShowResourceForm] = useState<string | null>(
     null
   );
+
   const [showRecordingForm, setShowRecordingForm] = useState<string | null>(
     null
   );
+
   const [activeTab, setActiveTab] = useState<
     "resources" | "recordings" | "quizzes"
   >("resources");
+
   const [newResource, setNewResource] = useState<{
     title: string;
     description: string;
@@ -206,6 +245,7 @@ export default function AdminContentPage() {
     type: "NOTE",
     file: null,
   });
+
   const [newRecording, setNewRecording] = useState<{
     title: string;
     description: string;
@@ -220,9 +260,9 @@ export default function AdminContentPage() {
     recordedDate: "",
   });
 
-  // AI Quiz Generation state
   const [showAIGenerate, setShowAIGenerate] = useState<string | null>(null);
   const [aiGenerating, setAiGenerating] = useState<string | null>(null);
+
   const [aiConfig, setAiConfig] = useState<{
     questionCount: number;
     types: string[];
@@ -232,12 +272,14 @@ export default function AdminContentPage() {
     types: ["MULTIPLE_CHOICE", "SHORT_ANSWER"],
     difficulty: "mixed",
   });
+
   const [generatedQuiz, setGeneratedQuiz] = useState<{
     title: string;
     timeLimitSeconds: number;
     questions: any[];
     meta?: { provider?: string };
   } | null>(null);
+
   const [showPreview, setShowPreview] = useState<string | null>(null);
 
   useEffect(() => {
@@ -247,6 +289,7 @@ export default function AdminContentPage() {
   const fetchSubjects = async () => {
     try {
       const res = await fetch("/api/admin/subjects");
+
       if (res.ok) {
         const data = await res.json();
         setSubjects(data.subjects);
@@ -258,19 +301,27 @@ export default function AdminContentPage() {
     }
   };
 
-  const showToast = (type: "success" | "error", text: string) => {
+  const showToast = (
+    type: "success" | "error",
+    text: string
+  ) => {
     setToast({ type, text });
     setTimeout(() => setToast(null), 3000);
   };
 
   const handleCreateSubject = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSubjectName.trim() || !newSubjectSlug.trim()) return;
+
+    if (!newSubjectName.trim() || !newSubjectSlug.trim()) {
+      return;
+    }
 
     try {
       const res = await fetch("/api/admin/subjects", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           name: newSubjectName.trim(),
           slug: newSubjectSlug.trim(),
@@ -282,21 +333,30 @@ export default function AdminContentPage() {
         setCreatingSubject(false);
         setNewSubjectName("");
         setNewSubjectSlug("");
-        showToast("success", "Subject created successfully");
+
+        showToast(
+          "success",
+          "Subject created successfully"
+        );
       } else {
         const data = await res.json();
+
         showToast(
           "error",
           data.error || "Failed to create subject"
         );
       }
-    } catch (error) {
-      showToast("error", "An unexpected error occurred");
+    } catch {
+      showToast(
+        "error",
+        "An unexpected error occurred"
+      );
     }
   };
 
   const handleUpdateSubject = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (
       !editingSubject ||
       !editSubjectName.trim() ||
@@ -308,7 +368,9 @@ export default function AdminContentPage() {
     try {
       const res = await fetch("/api/admin/subjects", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           id: editingSubject.id,
           name: editSubjectName.trim(),
@@ -319,16 +381,24 @@ export default function AdminContentPage() {
       if (res.ok) {
         fetchSubjects();
         setEditingSubject(null);
-        showToast("success", "Subject updated successfully");
+
+        showToast(
+          "success",
+          "Subject updated successfully"
+        );
       } else {
         const data = await res.json();
+
         showToast(
           "error",
           data.error || "Failed to update subject"
         );
       }
-    } catch (error) {
-      showToast("error", "An unexpected error occurred");
+    } catch {
+      showToast(
+        "error",
+        "An unexpected error occurred"
+      );
     }
   };
 
@@ -342,22 +412,35 @@ export default function AdminContentPage() {
     }
 
     try {
-      const res = await fetch(`/api/admin/subjects?id=${id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `/api/admin/subjects?id=${id}`,
+        {
+          method: "DELETE",
+        }
+      );
 
       if (res.ok) {
-        setSubjects(subjects.filter((s) => s.id !== id));
-        showToast("success", "Subject deleted successfully");
+        setSubjects(
+          subjects.filter((s) => s.id !== id)
+        );
+
+        showToast(
+          "success",
+          "Subject deleted successfully"
+        );
       } else {
         const data = await res.json();
+
         showToast(
           "error",
           data.error || "Failed to delete subject"
         );
       }
-    } catch (error) {
-      showToast("error", "An unexpected error occurred");
+    } catch {
+      showToast(
+        "error",
+        "An unexpected error occurred"
+      );
     }
   };
 
@@ -369,22 +452,36 @@ export default function AdminContentPage() {
     try {
       const res = await fetch("/api/admin/units", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subjectId, name, orderIndex }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          subjectId,
+          name,
+          orderIndex,
+        }),
       });
 
       if (res.ok) {
         fetchSubjects();
-        showToast("success", "Unit created successfully");
+
+        showToast(
+          "success",
+          "Unit created successfully"
+        );
       } else {
         const data = await res.json();
+
         showToast(
           "error",
           data.error || "Failed to create unit"
         );
       }
-    } catch (error) {
-      showToast("error", "An unexpected error occurred");
+    } catch {
+      showToast(
+        "error",
+        "An unexpected error occurred"
+      );
     }
   };
 
@@ -397,22 +494,36 @@ export default function AdminContentPage() {
     try {
       const res = await fetch("/api/admin/units", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: unitId, name, orderIndex }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: unitId,
+          name,
+          orderIndex,
+        }),
       });
 
       if (res.ok) {
         fetchSubjects();
-        showToast("success", "Unit updated successfully");
+
+        showToast(
+          "success",
+          "Unit updated successfully"
+        );
       } else {
         const data = await res.json();
+
         showToast(
           "error",
           data.error || "Failed to update unit"
         );
       }
-    } catch (error) {
-      showToast("error", "An unexpected error occurred");
+    } catch {
+      showToast(
+        "error",
+        "An unexpected error occurred"
+      );
     }
   };
 
@@ -429,9 +540,12 @@ export default function AdminContentPage() {
     }
 
     try {
-      const res = await fetch(`/api/admin/units?id=${unitId}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `/api/admin/units?id=${unitId}`,
+        {
+          method: "DELETE",
+        }
+      );
 
       if (res.ok) {
         setSubjects(
@@ -439,21 +553,31 @@ export default function AdminContentPage() {
             s.id === subjectId
               ? {
                   ...s,
-                  Unit: s.Unit.filter((u) => u.id !== unitId),
+                  Unit: s.Unit.filter(
+                    (u) => u.id !== unitId
+                  ),
                 }
               : s
           )
         );
-        showToast("success", "Unit deleted successfully");
+
+        showToast(
+          "success",
+          "Unit deleted successfully"
+        );
       } else {
         const data = await res.json();
+
         showToast(
           "error",
           data.error || "Failed to delete unit"
         );
       }
-    } catch (error) {
-      showToast("error", "An unexpected error occurred");
+    } catch {
+      showToast(
+        "error",
+        "An unexpected error occurred"
+      );
     }
   };
 
@@ -466,22 +590,36 @@ export default function AdminContentPage() {
     try {
       const res = await fetch("/api/admin/topics", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ unitId, name, orderIndex }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          unitId,
+          name,
+          orderIndex,
+        }),
       });
 
       if (res.ok) {
         fetchSubjects();
-        showToast("success", "Topic created successfully");
+
+        showToast(
+          "success",
+          "Topic created successfully"
+        );
       } else {
         const data = await res.json();
+
         showToast(
           "error",
           data.error || "Failed to create topic"
         );
       }
-    } catch (error) {
-      showToast("error", "An unexpected error occurred");
+    } catch {
+      showToast(
+        "error",
+        "An unexpected error occurred"
+      );
     }
   };
 
@@ -495,22 +633,36 @@ export default function AdminContentPage() {
     try {
       const res = await fetch("/api/admin/topics", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: topicId, name, orderIndex }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: topicId,
+          name,
+          orderIndex,
+        }),
       });
 
       if (res.ok) {
         fetchSubjects();
-        showToast("success", "Topic updated successfully");
+
+        showToast(
+          "success",
+          "Topic updated successfully"
+        );
       } else {
         const data = await res.json();
+
         showToast(
           "error",
           data.error || "Failed to update topic"
         );
       }
-    } catch (error) {
-      showToast("error", "An unexpected error occurred");
+    } catch {
+      showToast(
+        "error",
+        "An unexpected error occurred"
+      );
     }
   };
 
@@ -528,9 +680,12 @@ export default function AdminContentPage() {
     }
 
     try {
-      const res = await fetch(`/api/admin/topics?id=${topicId}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `/api/admin/topics?id=${topicId}`,
+        {
+          method: "DELETE",
+        }
+      );
 
       if (res.ok) {
         setSubjects(
@@ -543,7 +698,8 @@ export default function AdminContentPage() {
                       ? {
                           ...u,
                           Topic: u.Topic.filter(
-                            (t) => t.id !== topicId
+                            (t) =>
+                              t.id !== topicId
                           ),
                         }
                       : u
@@ -552,88 +708,119 @@ export default function AdminContentPage() {
               : s
           )
         );
-        showToast("success", "Topic deleted successfully");
+
+        showToast(
+          "success",
+          "Topic deleted successfully"
+        );
       } else {
         const data = await res.json();
+
         showToast(
           "error",
           data.error || "Failed to delete topic"
         );
       }
-    } catch (error) {
-      showToast("error", "An unexpected error occurred");
+    } catch {
+      showToast(
+        "error",
+        "An unexpected error occurred"
+      );
     }
   };
 
-  // Fetch resources for a topic
-  const fetchResources = useCallback(async (topicId: string) => {
-    setLoadingResources((prev) => new Set(prev).add(topicId));
+  const fetchResources = useCallback(
+    async (topicId: string) => {
+      setLoadingResources(
+        (prev) =>
+          new Set(prev).add(topicId)
+      );
 
-    try {
-      const res = await fetch(
-        `/api/admin/resources?topicId=${topicId}`,
-        {
-          cache: "no-store",
+      try {
+        const res = await fetch(
+          `/api/admin/resources?topicId=${topicId}`,
+          {
+            cache: "no-store",
+          }
+        );
+
+        if (res.ok) {
+          const data = await res.json();
+
+          setTopicResources((prev) => ({
+            ...prev,
+            [topicId]: data.resources,
+          }));
         }
+      } catch (error) {
+        console.error(
+          "Failed to fetch resources:",
+          error
+        );
+      } finally {
+        setLoadingResources((prev) => {
+          const next = new Set(prev);
+          next.delete(topicId);
+          return next;
+        });
+      }
+    },
+    []
+  );
+
+  const fetchRecordings = useCallback(
+    async (topicId: string) => {
+      setLoadingRecordings(
+        (prev) =>
+          new Set(prev).add(topicId)
       );
 
-      if (res.ok) {
-        const data = await res.json();
+      try {
+        const res = await fetch(
+          `/api/admin/recordings?topicId=${topicId}`
+        );
 
-        setTopicResources((prev) => ({
-          ...prev,
-          [topicId]: data.resources,
-        }));
+        if (res.ok) {
+          const data = await res.json();
+
+          setTopicRecordings((prev) => ({
+            ...prev,
+            [topicId]: data.recordings,
+          }));
+        }
+      } catch (error) {
+        console.error(
+          "Failed to fetch recordings:",
+          error
+        );
+      } finally {
+        setLoadingRecordings((prev) => {
+          const next = new Set(prev);
+          next.delete(topicId);
+          return next;
+        });
       }
-    } catch (error) {
-      console.error("Failed to fetch resources:", error);
-    } finally {
-      setLoadingResources((prev) => {
-        const next = new Set(prev);
-        next.delete(topicId);
-        return next;
-      });
-    }
-  }, []);
+    },
+    []
+  );
 
-  // Fetch recordings for a topic
-  const fetchRecordings = useCallback(async (topicId: string) => {
-    setLoadingRecordings((prev) => new Set(prev).add(topicId));
-
-    try {
-      const res = await fetch(
-        `/api/admin/recordings?topicId=${topicId}`
-      );
-
-      if (res.ok) {
-        const data = await res.json();
-
-        setTopicRecordings((prev) => ({
-          ...prev,
-          [topicId]: data.recordings,
-        }));
-      }
-    } catch (error) {
-      console.error("Failed to fetch recordings:", error);
-    } finally {
-      setLoadingRecordings((prev) => {
-        const next = new Set(prev);
-        next.delete(topicId);
-        return next;
-      });
-    }
-  }, []);
-
-  // Load resources & recordings for the currently expanded topic
   useEffect(() => {
     if (expandedTopic) {
       fetchResources(expandedTopic);
       fetchRecordings(expandedTopic);
     }
-  }, [expandedTopic, fetchResources, fetchRecordings]);
+  }, [
+    expandedTopic,
+    fetchResources,
+    fetchRecordings,
+  ]);
 
-  // Upload resource directly to Supabase using a signed upload URL
-  // generated by /api/upload.
+  // NEW UPLOAD FLOW:
+  // 1. Ask /api/upload for a Supabase signed upload URL.
+  // 2. Browser uploads directly to Supabase.
+  // 3. Return the public Supabase URL as fileKey.
+  //
+  // This does NOT use Vercel Blob.
   const uploadResourceFile = async (
     file: File,
     onProgress?: (progress: number) => void
@@ -642,124 +829,189 @@ export default function AdminContentPage() {
     fileType: string;
     fileSize: number;
   }> => {
+    if (file.size > MAX_FILE_SIZE) {
+      throw new Error(
+        "File is too large. Maximum allowed size is 100 MB."
+      );
+    }
+
     onProgress?.(0);
 
-    // Ask the authenticated server route to create a temporary
-    // Supabase signed upload URL.
-    const signResponse = await fetch("/api/upload", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        fileName: file.name,
-        contentType:
-          file.type || "application/octet-stream",
-      }),
-    });
+    const response = await fetch(
+      "/api/upload",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fileName: file.name,
+          contentType:
+            file.type ||
+            "application/octet-stream",
+          fileSize: file.size,
+        }),
+      }
+    );
 
-    const signData = await signResponse.json().catch(() => null);
+    const data = await response
+      .json()
+      .catch(() => null);
 
-    if (!signResponse.ok) {
+    if (!response.ok) {
       throw new Error(
-        signData?.error ||
+        data?.error ||
           "Failed to create Supabase upload URL"
       );
     }
 
     if (
-      !signData?.signedUrl ||
-      !signData?.publicUrl ||
-      !signData?.path
+      !data?.signedUrl ||
+      !data?.publicUrl ||
+      !data?.path
     ) {
       throw new Error(
         "Supabase returned an invalid upload response"
       );
     }
 
-    // The signed upload URL is used with PUT.
-    // XMLHttpRequest is used here so the existing progress bar continues
-    // to show real upload progress.
-    await new Promise<void>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
+    await new Promise<void>(
+      (resolve, reject) => {
+        const xhr =
+          new XMLHttpRequest();
 
-      xhr.open("PUT", signData.signedUrl, true);
+        xhr.open(
+          "PUT",
+          data.signedUrl,
+          true
+        );
 
-      xhr.setRequestHeader(
-        "Content-Type",
-        file.type || "application/octet-stream"
-      );
+        xhr.setRequestHeader(
+          "Content-Type",
+          file.type ||
+            "application/octet-stream"
+        );
 
-      xhr.setRequestHeader(
-        "Cache-Control",
-        "max-age=3600"
-      );
+        xhr.setRequestHeader(
+          "Cache-Control",
+          "max-age=3600"
+        );
 
-      xhr.upload.addEventListener("progress", (event) => {
-        if (event.lengthComputable) {
-          const progress = Math.round(
-            (event.loaded / event.total) * 100
-          );
+        xhr.upload.addEventListener(
+          "progress",
+          (event) => {
+            if (
+              event.lengthComputable
+            ) {
+              const progress =
+                Math.round(
+                  (event.loaded /
+                    event.total) *
+                    100
+                );
 
-          onProgress?.(progress);
-        }
-      });
-
-      xhr.addEventListener("load", () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          onProgress?.(100);
-          resolve();
-          return;
-        }
-
-        let message = `Supabase upload failed (HTTP ${xhr.status})`;
-
-        try {
-          const responseBody = JSON.parse(
-            xhr.responseText
-          );
-
-          if (responseBody?.message) {
-            message = responseBody.message;
-          } else if (responseBody?.error) {
-            message = responseBody.error;
+              onProgress?.(progress);
+            }
           }
-        } catch {
-          // Ignore non-JSON response bodies.
-        }
-
-        reject(new Error(message));
-      });
-
-      xhr.addEventListener("error", () => {
-        reject(
-          new Error(
-            "Network error while uploading to Supabase"
-          )
         );
-      });
 
-      xhr.addEventListener("abort", () => {
-        reject(
-          new Error("Supabase upload was cancelled")
+        xhr.addEventListener(
+          "load",
+          () => {
+            if (
+              xhr.status >= 200 &&
+              xhr.status < 300
+            ) {
+              onProgress?.(100);
+              resolve();
+              return;
+            }
+
+            let message =
+              `Supabase upload failed (HTTP ${xhr.status})`;
+
+            try {
+              const body =
+                JSON.parse(
+                  xhr.responseText
+                );
+
+              if (body?.message) {
+                message =
+                  body.message;
+              } else if (
+                body?.error
+              ) {
+                message =
+                  body.error;
+              }
+            } catch {
+              // Ignore non-JSON response.
+            }
+
+            reject(
+              new Error(message)
+            );
+          }
         );
-      });
 
-      xhr.send(file);
-    });
+        xhr.addEventListener(
+          "error",
+          () => {
+            reject(
+              new Error(
+                "Network error while uploading to Supabase"
+              )
+            );
+          }
+        );
+
+        xhr.addEventListener(
+          "abort",
+          () => {
+            reject(
+              new Error(
+                "Supabase upload was cancelled"
+              )
+            );
+          }
+        );
+
+        xhr.send(file);
+      }
+    );
 
     return {
-      fileKey: signData.publicUrl,
+      fileKey: data.publicUrl,
       fileType:
-        file.type || "application/octet-stream",
+        file.type ||
+        "application/octet-stream",
       fileSize: file.size,
     };
   };
 
-  // Create resource
-  const handleCreateResource = async (topicId: string) => {
-    if (!newResource.title.trim() || !newResource.file) {
-      showToast("error", "Title and file are required");
+  const handleCreateResource = async (
+    topicId: string
+  ) => {
+    if (
+      !newResource.title.trim() ||
+      !newResource.file
+    ) {
+      showToast(
+        "error",
+        "Title and file are required"
+      );
+      return;
+    }
+
+    if (
+      newResource.file.size >
+      MAX_FILE_SIZE
+    ) {
+      showToast(
+        "error",
+        "File is too large. Maximum allowed size is 100 MB."
+      );
       return;
     }
 
@@ -767,54 +1019,53 @@ export default function AdminContentPage() {
     setUploadProgress(0);
 
     try {
-      // Upload file to Supabase first.
-      const fileInfo = await uploadResourceFile(
-        newResource.file,
-        (progress) => setUploadProgress(progress)
+      const fileInfo =
+        await uploadResourceFile(
+          newResource.file,
+          (progress) =>
+            setUploadProgress(progress)
+        );
+
+      const res = await fetch(
+        "/api/admin/resources",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            topicId,
+            title:
+              newResource.title.trim(),
+            description:
+              newResource.description.trim(),
+            type: newResource.type,
+            fileKey:
+              fileInfo.fileKey,
+            fileType:
+              fileInfo.fileType,
+            fileSize:
+              fileInfo.fileSize,
+          }),
+        }
       );
-
-      if (!fileInfo) {
-        showToast("error", "Failed to upload file");
-        return;
-      }
-
-      // Create resource record in the existing database.
-      console.log(
-        "[CREATE] POST /api/admin/resources topicId=%s fileKey=%s fileSize=%d type=%s",
-        topicId,
-        String(fileInfo.fileKey).slice(0, 60),
-        fileInfo.fileSize,
-        newResource.type
-      );
-
-      const res = await fetch("/api/admin/resources", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          topicId,
-          title: newResource.title.trim(),
-          description: newResource.description.trim(),
-          type: newResource.type,
-          fileKey: fileInfo.fileKey,
-          fileType: fileInfo.fileType,
-          fileSize: fileInfo.fileSize,
-        }),
-      });
 
       if (res.ok) {
-        const data = await res.json();
+        const data =
+          await res.json();
 
         console.log(
-          "[CREATE] OK resourceId=%s topicId=%s",
-          data.resource?.id,
+          "[CREATE] Resource created:",
+          data.resource?.id
+        );
+
+        await fetchResources(
           topicId
         );
 
-        // Re-fetch from the server so the UI receives the same
-        // processed resource data it gets after a browser refresh.
-        await fetchResources(topicId);
-
         setShowResourceForm(null);
+
         setNewResource({
           title: "",
           description: "",
@@ -827,34 +1078,32 @@ export default function AdminContentPage() {
           "Resource created successfully"
         );
       } else {
-        const data = await res.json();
-
-        console.error(
-          "[CREATE] FAILED HTTP %d: %s",
-          res.status,
-          data.error
-        );
+        const data =
+          await res.json();
 
         showToast(
           "error",
-          data.error || "Failed to create resource"
+          data.error ||
+            "Failed to create resource"
         );
       }
     } catch (error: any) {
-      const msg =
+      console.error(
+        "File upload/create error:",
+        error
+      );
+
+      showToast(
+        "error",
         error?.message ||
-        "An unexpected error occurred";
-
-      console.error("File upload/create error:", error);
-
-      showToast("error", msg);
+          "An unexpected error occurred"
+      );
     } finally {
       setUploadingResource(null);
       setUploadProgress(0);
     }
   };
 
-  // Delete resource
   const handleDeleteResource = async (
     resourceId: string,
     topicId: string
@@ -878,8 +1127,11 @@ export default function AdminContentPage() {
       if (res.ok) {
         setTopicResources((prev) => ({
           ...prev,
-          [topicId]: (prev[topicId] || []).filter(
-            (r) => r.id !== resourceId
+          [topicId]: (
+            prev[topicId] || []
+          ).filter(
+            (r) =>
+              r.id !== resourceId
           ),
         }));
 
@@ -888,263 +1140,343 @@ export default function AdminContentPage() {
           "Resource deleted successfully"
         );
       } else {
-        const data = await res.json();
+        const data =
+          await res.json();
 
         showToast(
           "error",
-          data.error || "Failed to delete resource"
+          data.error ||
+            "Failed to delete resource"
         );
       }
-    } catch (error) {
-      showToast("error", "An unexpected error occurred");
+    } catch {
+      showToast(
+        "error",
+        "An unexpected error occurred"
+      );
     }
   };
 
-  // Create recording
-  const handleCreateRecording = async (topicId: string) => {
-    if (
-      !newRecording.title.trim() ||
-      !newRecording.streamVideoId.trim()
-    ) {
-      showToast(
-        "error",
-        "Title and Stream Video ID are required"
-      );
-      return;
-    }
-
-    setUploadingRecording(topicId);
-
-    try {
-      const res = await fetch("/api/admin/recordings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          topicId,
-          title: newRecording.title.trim(),
-          description: newRecording.description.trim(),
-          streamVideoId:
-            newRecording.streamVideoId.trim(),
-          durationSeconds:
-            newRecording.durationSeconds || undefined,
-          recordedDate:
-            newRecording.recordedDate || undefined,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-
-        setTopicRecordings((prev) => ({
-          ...prev,
-          [topicId]: [
-            ...(prev[topicId] || []),
-            data.recording,
-          ],
-        }));
-
-        setShowRecordingForm(null);
-
-        setNewRecording({
-          title: "",
-          description: "",
-          streamVideoId: "",
-          durationSeconds: 0,
-          recordedDate: "",
-        });
-
-        showToast(
-          "success",
-          "Recording created successfully"
-        );
-      } else {
-        const data = await res.json();
-
+  const handleCreateRecording =
+    async (topicId: string) => {
+      if (
+        !newRecording.title.trim() ||
+        !newRecording.streamVideoId.trim()
+      ) {
         showToast(
           "error",
-          data.error || "Failed to create recording"
+          "Title and Stream Video ID are required"
         );
+        return;
       }
-    } catch (error) {
-      showToast("error", "An unexpected error occurred");
-    } finally {
-      setUploadingRecording(null);
-    }
-  };
 
-  // Generate quiz with AI
-  const handleGenerateQuiz = async (topicId: string) => {
-    if (aiConfig.types.length === 0) {
-      showToast(
-        "error",
-        "Please select at least one question type"
+      setUploadingRecording(
+        topicId
       );
-      return;
-    }
 
-    setAiGenerating(topicId);
+      try {
+        const res = await fetch(
+          "/api/admin/recordings",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              topicId,
+              title:
+                newRecording.title.trim(),
+              description:
+                newRecording.description.trim(),
+              streamVideoId:
+                newRecording.streamVideoId.trim(),
+              durationSeconds:
+                newRecording.durationSeconds ||
+                undefined,
+              recordedDate:
+                newRecording.recordedDate ||
+                undefined,
+            }),
+          }
+        );
 
-    try {
-      const res = await fetch(
-        "/api/admin/quizzes/generate",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            topicId,
-            questionCount: aiConfig.questionCount,
-            types: aiConfig.types,
-            difficulty: aiConfig.difficulty,
-          }),
+        if (res.ok) {
+          const data =
+            await res.json();
+
+          setTopicRecordings(
+            (prev) => ({
+              ...prev,
+              [topicId]: [
+                ...(prev[topicId] ||
+                  []),
+                data.recording,
+              ],
+            })
+          );
+
+          setShowRecordingForm(
+            null
+          );
+
+          setNewRecording({
+            title: "",
+            description: "",
+            streamVideoId: "",
+            durationSeconds: 0,
+            recordedDate: "",
+          });
+
+          showToast(
+            "success",
+            "Recording created successfully"
+          );
+        } else {
+          const data =
+            await res.json();
+
+          showToast(
+            "error",
+            data.error ||
+              "Failed to create recording"
+          );
         }
-      );
-
-      if (res.ok) {
-        const data = await res.json();
-
-        setGeneratedQuiz(data.quiz);
-        setShowPreview(topicId);
-
-        const provider =
-          data.meta?.provider || "AI";
-
-        showToast(
-          "success",
-          `Quiz generated successfully with ${provider}!`
-        );
-      } else {
-        const data = await res.json();
-
+      } catch {
         showToast(
           "error",
-          data.error || "Failed to generate quiz"
+          "An unexpected error occurred"
+        );
+      } finally {
+        setUploadingRecording(
+          null
         );
       }
-    } catch (error) {
-      showToast("error", "An unexpected error occurred");
-    } finally {
-      setAiGenerating(null);
-    }
-  };
+    };
 
-  // Save generated quiz
-  const handleSaveGeneratedQuiz = async (
-    topicId: string
-  ) => {
-    if (!generatedQuiz) return;
+  const handleGenerateQuiz =
+    async (topicId: string) => {
+      if (
+        aiConfig.types.length ===
+        0
+      ) {
+        showToast(
+          "error",
+          "Please select at least one question type"
+        );
+        return;
+      }
 
-    try {
-      const res = await fetch(
-        "/api/admin/quizzes",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            topicId,
-            title: generatedQuiz.title,
-            timeLimitSeconds:
-              generatedQuiz.timeLimitSeconds,
-            isActive: true,
-            questions:
-              generatedQuiz.questions.map(
-                (q: any, idx: number) => ({
-                  prompt: q.prompt,
-                  type: q.type,
-                  marks: q.marks,
-                  orderIndex: idx,
-                  options:
-                    q.options?.map(
-                      (opt: any) => ({
-                        text: opt.text,
-                        isCorrect:
-                          opt.isCorrect,
-                      })
-                    ),
-                  explanation:
-                    q.explanation,
-                  markScheme:
-                    q.markScheme,
-                })
+      setAiGenerating(topicId);
+
+      try {
+        const res = await fetch(
+          "/api/admin/quizzes/generate",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              topicId,
+              questionCount:
+                aiConfig.questionCount,
+              types:
+                aiConfig.types,
+              difficulty:
+                aiConfig.difficulty,
+            }),
+          }
+        );
+
+        if (res.ok) {
+          const data =
+            await res.json();
+
+          setGeneratedQuiz(
+            data.quiz
+          );
+
+          setShowPreview(
+            topicId
+          );
+
+          showToast(
+            "success",
+            `Quiz generated successfully with ${
+              data.meta?.provider ||
+              "AI"
+            }!`
+          );
+        } else {
+          const data =
+            await res.json();
+
+          showToast(
+            "error",
+            data.error ||
+              "Failed to generate quiz"
+          );
+        }
+      } catch {
+        showToast(
+          "error",
+          "An unexpected error occurred"
+        );
+      } finally {
+        setAiGenerating(null);
+      }
+    };
+
+  const handleSaveGeneratedQuiz =
+    async (
+      topicId: string
+    ) => {
+      if (!generatedQuiz) {
+        return;
+      }
+
+      try {
+        const res = await fetch(
+          "/api/admin/quizzes",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              topicId,
+              title:
+                generatedQuiz.title,
+              timeLimitSeconds:
+                generatedQuiz.timeLimitSeconds,
+              isActive: true,
+              questions:
+                generatedQuiz.questions.map(
+                  (
+                    q: any,
+                    idx: number
+                  ) => ({
+                    prompt:
+                      q.prompt,
+                    type: q.type,
+                    marks: q.marks,
+                    orderIndex:
+                      idx,
+                    options:
+                      q.options?.map(
+                        (
+                          opt: any
+                        ) => ({
+                          text:
+                            opt.text,
+                          isCorrect:
+                            opt.isCorrect,
+                        })
+                      ),
+                    explanation:
+                      q.explanation,
+                    markScheme:
+                      q.markScheme,
+                  })
+                ),
+            }),
+          }
+        );
+
+        if (res.ok) {
+          fetchSubjects();
+
+          setShowAIGenerate(
+            null
+          );
+          setGeneratedQuiz(
+            null
+          );
+          setShowPreview(null);
+
+          showToast(
+            "success",
+            "Quiz saved successfully!"
+          );
+        } else {
+          const data =
+            await res.json();
+
+          showToast(
+            "error",
+            data.error ||
+              "Failed to save quiz"
+          );
+        }
+      } catch {
+        showToast(
+          "error",
+          "An unexpected error occurred"
+        );
+      }
+    };
+
+  const handleDeleteRecording =
+    async (
+      recordingId: string,
+      topicId: string
+    ) => {
+      if (
+        !confirm(
+          "Are you sure you want to delete this recording?"
+        )
+      ) {
+        return;
+      }
+
+      try {
+        const res =
+          await fetch(
+            `/api/admin/recordings?id=${recordingId}`,
+            {
+              method: "DELETE",
+            }
+          );
+
+        if (res.ok) {
+          setTopicRecordings(
+            (prev) => ({
+              ...prev,
+              [topicId]: (
+                prev[topicId] ||
+                []
+              ).filter(
+                (r) =>
+                  r.id !==
+                  recordingId
               ),
-          }),
+            })
+          );
+
+          showToast(
+            "success",
+            "Recording deleted successfully"
+          );
+        } else {
+          const data =
+            await res.json();
+
+          showToast(
+            "error",
+            data.error ||
+              "Failed to delete recording"
+          );
         }
-      );
-
-      if (res.ok) {
-        fetchSubjects();
-
-        setShowAIGenerate(null);
-        setGeneratedQuiz(null);
-        setShowPreview(null);
-
-        showToast(
-          "success",
-          "Quiz saved successfully!"
-        );
-      } else {
-        const data = await res.json();
-
+      } catch {
         showToast(
           "error",
-          data.error || "Failed to save quiz"
+          "An unexpected error occurred"
         );
       }
-    } catch (error) {
-      showToast("error", "An unexpected error occurred");
-    }
-  };
-
-  // Delete recording
-  const handleDeleteRecording = async (
-    recordingId: string,
-    topicId: string
-  ) => {
-    if (
-      !confirm(
-        "Are you sure you want to delete this recording?"
-      )
-    ) {
-      return;
-    }
-
-    try {
-      const res = await fetch(
-        `/api/admin/recordings?id=${recordingId}`,
-        {
-          method: "DELETE",
-        }
-      );
-
-      if (res.ok) {
-        setTopicRecordings((prev) => ({
-          ...prev,
-          [topicId]: (
-            prev[topicId] || []
-          ).filter(
-            (r) => r.id !== recordingId
-          ),
-        }));
-
-        showToast(
-          "success",
-          "Recording deleted successfully"
-        );
-      } else {
-        const data = await res.json();
-
-        showToast(
-          "error",
-          data.error || "Failed to delete recording"
-        );
-      }
-    } catch (error) {
-      showToast("error", "An unexpected error occurred");
-    }
-  };
+    };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -1153,6 +1485,7 @@ export default function AdminContentPage() {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             Content Management
           </h1>
+
           <p className="text-gray-600 dark:text-gray-400 mt-1">
             Manage subjects, units, topics, and content
           </p>
@@ -1162,14 +1495,15 @@ export default function AdminContentPage() {
           <Alert
             variant={toast.type}
             dismissible
-            onDismiss={() => setToast(null)}
+            onDismiss={() =>
+              setToast(null)
+            }
             className="mb-6"
           >
             {toast.text}
           </Alert>
         )}
 
-        {/* Create Subject Form */}
         {creatingSubject && (
           <GlassCard
             variant="default"
@@ -1181,14 +1515,22 @@ export default function AdminContentPage() {
             </h2>
 
             <SubjectForm
-              onSubmit={handleCreateSubject}
+              onSubmit={
+                handleCreateSubject
+              }
               onCancel={() =>
-                setCreatingSubject(false)
+                setCreatingSubject(
+                  false
+                )
               }
               name={newSubjectName}
               slug={newSubjectSlug}
-              onNameChange={setNewSubjectName}
-              onSlugChange={setNewSubjectSlug}
+              onNameChange={
+                setNewSubjectName
+              }
+              onSlugChange={
+                setNewSubjectSlug
+              }
               loading={false}
               isNew={true}
             />
@@ -1197,33 +1539,41 @@ export default function AdminContentPage() {
 
         {!creatingSubject && (
           <Button
-            onClick={() => setCreatingSubject(true)}
+            onClick={() =>
+              setCreatingSubject(
+                true
+              )
+            }
             className="mb-6"
-            icon={<Plus className="w-4 h-4" />}
+            icon={
+              <Plus className="w-4 h-4" />
+            }
           >
             Add Subject
           </Button>
         )}
 
-        {/* Subjects List */}
         {loading ? (
           <div
             className="space-y-4"
             aria-busy="true"
           >
-            {[1, 2, 3].map((i) => (
-              <GlassCard
-                key={i}
-                variant="strong"
-                padding="lg"
-                className="animate-pulse"
-              >
-                <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/4 mb-4" />
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2" />
-              </GlassCard>
-            ))}
+            {[1, 2, 3].map(
+              (i) => (
+                <GlassCard
+                  key={i}
+                  variant="strong"
+                  padding="lg"
+                  className="animate-pulse"
+                >
+                  <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/4 mb-4" />
+                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2" />
+                </GlassCard>
+              )
+            )}
           </div>
-        ) : subjects.length === 0 ? (
+        ) : subjects.length ===
+          0 ? (
           <GlassCard
             variant="default"
             padding="xl"
@@ -1236,635 +1586,467 @@ export default function AdminContentPage() {
             </h3>
 
             <p className="text-gray-500 dark:text-gray-400 mb-6">
-              Create your first subject to start
-              building content.
+              Create your first subject to start building content.
             </p>
 
             <Button
               onClick={() =>
-                setCreatingSubject(true)
+                setCreatingSubject(
+                  true
+                )
               }
-              icon={<Plus className="w-4 h-4" />}
+              icon={
+                <Plus className="w-4 h-4" />
+              }
             >
               Create Subject
             </Button>
           </GlassCard>
         ) : (
           <div className="space-y-4">
-            {subjects.map((subject) => (
-              <GlassCard
-                key={subject.id}
-                variant="default"
-                padding="lg"
-              >
-                {/* Subject Header */}
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() =>
-                        setExpandedSubject(
-                          expandedSubject === subject.id
-                            ? null
-                            : subject.id
+            {subjects.map(
+              (subject) => (
+                <GlassCard
+                  key={subject.id}
+                  variant="default"
+                  padding="lg"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() =>
+                          setExpandedSubject(
+                            expandedSubject ===
+                              subject.id
+                              ? null
+                              : subject.id
+                          )
+                        }
+                        aria-label={
+                          expandedSubject ===
+                          subject.id
+                            ? "Collapse"
+                            : "Expand"
+                        }
+                      >
+                        <ChevronRight
+                          className={`w-5 h-5 transition-transform ${
+                            expandedSubject ===
+                            subject.id
+                              ? "rotate-90"
+                              : ""
+                          }`}
+                        />
+                      </Button>
+
+                      <div className="w-12 h-12 rounded-xl bg-primary/10 dark:bg-primary/20 flex items-center justify-center">
+                        <FolderOpen className="w-6 h-6 text-primary" />
+                      </div>
+
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                          {subject.name}
+                        </h3>
+
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          Slug:{" "}
+                          {subject.slug} ·{" "}
+                          {subject._count.Unit}{" "}
+                          units
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setEditingSubject(
+                            subject
+                          );
+                          setEditSubjectName(
+                            subject.name
+                          );
+                          setEditSubjectSlug(
+                            subject.slug
+                          );
+                        }}
+                      >
+                        <Edit className="w-4 h-4 mr-1" />
+                        Edit
+                      </Button>
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        onClick={() =>
+                          handleDeleteSubject(
+                            subject.id
+                          )
+                        }
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+
+                  {editingSubject?.id ===
+                    subject.id && (
+                    <SubjectForm
+                      onSubmit={
+                        handleUpdateSubject
+                      }
+                      onCancel={() =>
+                        setEditingSubject(
+                          null
                         )
                       }
-                      aria-label={
-                        expandedSubject === subject.id
-                          ? "Collapse"
-                          : "Expand"
+                      name={
+                        editSubjectName
                       }
-                    >
-                      <ChevronRight
-                        className={`w-5 h-5 transition-transform ${
-                          expandedSubject === subject.id
-                            ? "rotate-90"
-                            : ""
-                        }`}
-                      />
-                    </Button>
-
-                    <div className="w-12 h-12 rounded-xl bg-primary/10 dark:bg-primary/20 flex items-center justify-center">
-                      <FolderOpen className="w-6 h-6 text-primary" />
-                    </div>
-
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        {subject.name}
-                      </h3>
-
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Slug: {subject.slug} ·{" "}
-                        {subject._count.Unit} units
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        setEditingSubject(subject)
+                      slug={
+                        editSubjectSlug
                       }
-                    >
-                      <Edit className="w-4 h-4 mr-1" /> Edit
-                    </Button>
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                      onClick={() =>
-                        handleDeleteSubject(subject.id)
+                      onNameChange={
+                        setEditSubjectName
                       }
-                    >
-                      <Trash2 className="w-4 h-4 mr-1" /> Delete
-                    </Button>
-                  </div>
-                </div>
+                      onSlugChange={
+                        setEditSubjectSlug
+                      }
+                      loading={false}
+                      isNew={false}
+                    />
+                  )}
 
-                {/* Edit Subject Form */}
-                {editingSubject?.id === subject.id && (
-                  <SubjectForm
-                    onSubmit={handleUpdateSubject}
-                    onCancel={() =>
-                      setEditingSubject(null)
-                    }
-                    name={editSubjectName}
-                    slug={editSubjectSlug}
-                    onNameChange={
-                      setEditSubjectName
-                    }
-                    onSlugChange={
-                      setEditSubjectSlug
-                    }
-                    loading={false}
-                    isNew={false}
-                  />
-                )}
-
-                {/* Units */}
-                {expandedSubject === subject.id && (
-                  <div className="ml-4 mt-4 space-y-4 border-l-2 border-gray-200 dark:border-gray-700 pl-4">
-                    {subject.Unit
-                      .sort(
+                  {expandedSubject ===
+                    subject.id && (
+                    <div className="ml-4 mt-4 space-y-4 border-l-2 border-gray-200 dark:border-gray-700 pl-4">
+                      {subject.Unit.sort(
                         (a, b) =>
                           a.orderIndex -
                           b.orderIndex
-                      )
-                      .map((unit) => (
-                        <div
-                          key={unit.id}
-                          className="border-l-2 border-gray-200 dark:border-gray-700 pl-4 ml-4"
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-3">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() =>
-                                  setExpandedUnit(
-                                    expandedUnit ===
-                                      unit.id
-                                      ? null
-                                      : unit.id
-                                  )
-                                }
-                                aria-label={
-                                  expandedUnit ===
-                                  unit.id
-                                    ? "Collapse"
-                                    : "Expand"
-                                }
-                              >
-                                <ChevronRight
-                                  className={`w-5 h-5 transition-transform ${
+                      ).map(
+                        (unit) => (
+                          <div
+                            key={
+                              unit.id
+                            }
+                            className="border-l-2 border-gray-200 dark:border-gray-700 pl-4 ml-4"
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-3">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() =>
+                                    setExpandedUnit(
+                                      expandedUnit ===
+                                        unit.id
+                                        ? null
+                                        : unit.id
+                                    )
+                                  }
+                                  aria-label={
                                     expandedUnit ===
                                     unit.id
-                                      ? "rotate-90"
-                                      : ""
-                                  }`}
-                                />
-                              </Button>
+                                      ? "Collapse"
+                                      : "Expand"
+                                  }
+                                >
+                                  <ChevronRight
+                                    className={`w-5 h-5 transition-transform ${
+                                      expandedUnit ===
+                                      unit.id
+                                        ? "rotate-90"
+                                        : ""
+                                    }`}
+                                  />
+                                </Button>
 
-                              <div className="w-10 h-10 rounded-lg bg-secondary/10 dark:bg-secondary/20 flex items-center justify-center">
-                                <FileText className="w-5 h-5 text-secondary" />
+                                <div className="w-10 h-10 rounded-lg bg-secondary/10 dark:bg-secondary/20 flex items-center justify-center">
+                                  <FileText className="w-5 h-5 text-secondary" />
+                                </div>
+
+                                <div>
+                                  <h4 className="font-medium text-gray-900 dark:text-white">
+                                    {unit.name}
+                                  </h4>
+
+                                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                                    {
+                                      unit._count
+                                        .Topic
+                                    }{" "}
+                                    topics
+                                  </p>
+                                </div>
                               </div>
 
-                              <div>
-                                <h4 className="font-medium text-gray-900 dark:text-white">
-                                  {unit.name}
-                                </h4>
-
-                                <p className="text-sm text-gray-500 dark:text-gray-400">
-                                  {unit._count.Topic} topics
-                                </p>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-red-600"
+                                  onClick={() =>
+                                    handleDeleteUnit(
+                                      unit.id,
+                                      subject.id
+                                    )
+                                  }
+                                  title="Delete Unit"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-red-600"
-                                onClick={() =>
-                                  handleDeleteUnit(
-                                    unit.id,
-                                    subject.id
-                                  )
-                                }
-                                title="Delete Unit"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </div>
-
-                          {expandedUnit === unit.id && (
-                            <div className="ml-4 mt-2 space-y-2">
-                              {unit.Topic
-                                .sort(
+                            {expandedUnit ===
+                              unit.id && (
+                              <div className="ml-4 mt-2 space-y-2">
+                                {unit.Topic.sort(
                                   (a, b) =>
                                     a.orderIndex -
                                     b.orderIndex
-                                )
-                                .map((topic) => (
-                                  <div
-                                    key={topic.id}
-                                  >
+                                ).map(
+                                  (
+                                    topic
+                                  ) => (
                                     <div
-                                      className={`flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg cursor-pointer transition-colors ${
-                                        expandedTopic ===
+                                      key={
                                         topic.id
-                                          ? "bg-primary/5 dark:bg-primary/10 border border-primary/20"
-                                          : "hover:bg-gray-100 dark:hover:bg-gray-700/50"
-                                      }`}
-                                      onClick={() =>
-                                        setExpandedTopic(
-                                          expandedTopic ===
-                                            topic.id
-                                            ? null
-                                            : topic.id
-                                        )
                                       }
                                     >
-                                      <div className="flex items-center gap-3">
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setExpandedTopic(
-                                              expandedTopic ===
-                                                topic.id
-                                                ? null
-                                                : topic.id
-                                            );
-                                          }}
-                                          aria-label={
+                                      <div
+                                        className={`flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg cursor-pointer transition-colors ${
+                                          expandedTopic ===
+                                          topic.id
+                                            ? "bg-primary/5 dark:bg-primary/10 border border-primary/20"
+                                            : "hover:bg-gray-100 dark:hover:bg-gray-700/50"
+                                        }`}
+                                        onClick={() =>
+                                          setExpandedTopic(
                                             expandedTopic ===
-                                            topic.id
-                                              ? "Collapse"
-                                              : "Expand"
-                                          }
-                                        >
-                                          <ChevronRight
-                                            className={`w-5 h-5 transition-transform ${
-                                              expandedTopic ===
                                               topic.id
-                                                ? "rotate-90"
-                                                : ""
-                                            }`}
-                                          />
-                                        </Button>
-
-                                        <div className="w-8 h-8 rounded bg-accent/10 dark:bg-accent/20 flex items-center justify-center">
-                                          <HelpCircle className="w-4 h-4 text-accent" />
-                                        </div>
-
-                                        <div>
-                                          <p className="font-medium text-gray-900 dark:text-white">
-                                            {topic.name}
-                                          </p>
-
-                                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                                            {
-                                              topic._count
-                                                .Resource
-                                            }{" "}
-                                            resources ·{" "}
-                                            {
-                                              topic._count
-                                                .Recording
-                                            }{" "}
-                                            recordings ·{" "}
-                                            {
-                                              topic._count
-                                                .Quiz
-                                            }{" "}
-                                            QP & MS
-                                          </p>
-                                        </div>
-                                      </div>
-
-                                      <div className="flex items-center gap-1">
-                                        <Link
-                                          href={`/dashboard/${encodeURIComponent(
-                                            subject.slug
-                                          )}/${encodeURIComponent(
-                                            unit.name
-                                              .toLowerCase()
-                                              .replace(
-                                                /\s+/g,
-                                                "-"
-                                              )
-                                          )}/${topic.id}`}
-                                          target="_blank"
-                                          title="View as student"
-                                          onClick={(e) =>
-                                            e.stopPropagation()
-                                          }
-                                        >
+                                              ? null
+                                              : topic.id
+                                          )
+                                        }
+                                      >
+                                        <div className="flex items-center gap-3">
                                           <Button
                                             variant="ghost"
                                             size="icon"
+                                            onClick={(
+                                              e
+                                            ) => {
+                                              e.stopPropagation();
+
+                                              setExpandedTopic(
+                                                expandedTopic ===
+                                                  topic.id
+                                                  ? null
+                                                  : topic.id
+                                              );
+                                            }}
+                                            aria-label={
+                                              expandedTopic ===
+                                              topic.id
+                                                ? "Collapse"
+                                                : "Expand"
+                                            }
                                           >
-                                            <FileText className="w-4 h-4" />
+                                            <ChevronRight
+                                              className={`w-5 h-5 transition-transform ${
+                                                expandedTopic ===
+                                                topic.id
+                                                  ? "rotate-90"
+                                                  : ""
+                                              }`}
+                                            />
                                           </Button>
-                                        </Link>
 
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="text-red-600"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeleteTopic(
-                                              topic.id,
-                                              unit.id,
-                                              subject.id
-                                            );
-                                          }}
-                                          title="Delete Topic"
-                                        >
-                                          <Trash2 className="w-4 h-4" />
-                                        </Button>
-                                      </div>
-                                    </div>
+                                          <div className="w-8 h-8 rounded bg-accent/10 dark:bg-accent/20 flex items-center justify-center">
+                                            <HelpCircle className="w-4 h-4 text-accent" />
+                                          </div>
 
-                                    {/* Expanded Topic Content: Resources, Recordings, Quizzes Tabs */}
-                                    {expandedTopic ===
-                                      topic.id && (
-                                      <div className="ml-4 mt-3 space-y-4 border-l-2 border-gray-200 dark:border-gray-700 pl-4">
-                                        <div className="border-b border-gray-200 dark:border-gray-700">
-                                          <nav
-                                            className="flex gap-4"
-                                            aria-label="Content tabs"
-                                          >
-                                            <button
-                                              onClick={() =>
-                                                setActiveTab(
-                                                  "resources"
-                                                )
-                                              }
-                                              className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
-                                                activeTab ===
-                                                "resources"
-                                                  ? "border-primary text-primary"
-                                                  : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                                              }`}
-                                            >
-                                              Resources (
+                                          <div>
+                                            <p className="font-medium text-gray-900 dark:text-white">
                                               {
-                                                topic._count
+                                                topic.name
+                                              }
+                                            </p>
+
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                              {
+                                                topic
+                                                  ._count
                                                   .Resource
-                                              }
-                                              )
-                                            </button>
-
-                                            <button
-                                              onClick={() =>
-                                                setActiveTab(
-                                                  "recordings"
-                                                )
-                                              }
-                                              className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
-                                                activeTab ===
-                                                "recordings"
-                                                  ? "border-primary text-primary"
-                                                  : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                                              }`}
-                                            >
-                                              Recordings (
+                                              }{" "}
+                                              resources ·{" "}
                                               {
-                                                topic._count
+                                                topic
+                                                  ._count
                                                   .Recording
-                                              }
-                                              )
-                                            </button>
-
-                                            <button
-                                              onClick={() =>
-                                                setActiveTab(
-                                                  "quizzes"
-                                                )
-                                              }
-                                              className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
-                                                activeTab ===
-                                                "quizzes"
-                                                  ? "border-primary text-primary"
-                                                  : "border-transparent text-gray-500 hover:text-gray-300"
-                                              }`}
-                                            >
-                                              QP & MS (
+                                              }{" "}
+                                              recordings ·{" "}
                                               {
-                                                topic._count
+                                                topic
+                                                  ._count
                                                   .Quiz
-                                              }
-                                              )
-                                            </button>
-                                          </nav>
+                                              }{" "}
+                                              QP & MS
+                                            </p>
+                                          </div>
                                         </div>
 
-                                        {/* Resources Tab */}
-                                        {activeTab ===
-                                          "resources" && (
-                                          <div className="mt-4 space-y-3">
-                                            {/* Add Resource Button/Form */}
-                                            {showResourceForm ===
-                                            topic.id ? (
-                                              <GlassCard
-                                                variant="default"
-                                                padding="md"
+                                        <div className="flex items-center gap-1">
+                                          <Link
+                                            href={`/dashboard/${encodeURIComponent(
+                                              subject.slug
+                                            )}/${encodeURIComponent(
+                                              unit.name
+                                                .toLowerCase()
+                                                .replace(
+                                                  /\s+/g,
+                                                  "-"
+                                                )
+                                            )}/${topic.id}`}
+                                            target="_blank"
+                                            title="View as student"
+                                            onClick={(
+                                              e
+                                            ) =>
+                                              e.stopPropagation()
+                                            }
+                                          >
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                            >
+                                              <FileText className="w-4 h-4" />
+                                            </Button>
+                                          </Link>
+
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="text-red-600"
+                                            onClick={(
+                                              e
+                                            ) => {
+                                              e.stopPropagation();
+
+                                              handleDeleteTopic(
+                                                topic.id,
+                                                unit.id,
+                                                subject.id
+                                              );
+                                            }}
+                                            title="Delete Topic"
+                                          >
+                                            <Trash2 className="w-4 h-4" />
+                                          </Button>
+                                        </div>
+                                      </div>
+
+                                      {expandedTopic ===
+                                        topic.id && (
+                                        <div className="ml-4 mt-3 space-y-4 border-l-2 border-gray-200 dark:border-gray-700 pl-4">
+                                          <div className="border-b border-gray-200 dark:border-gray-700">
+                                            <nav
+                                              className="flex gap-4"
+                                              aria-label="Content tabs"
+                                            >
+                                              <button
+                                                onClick={() =>
+                                                  setActiveTab(
+                                                    "resources"
+                                                  )
+                                                }
+                                                className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
+                                                  activeTab ===
+                                                  "resources"
+                                                    ? "border-primary text-primary"
+                                                    : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                                                }`}
                                               >
-                                                <div className="flex items-center justify-between mb-3">
-                                                  <h4 className="font-medium text-gray-900 dark:text-white">
-                                                    Upload Resource
-                                                  </h4>
+                                                Resources (
+                                                {
+                                                  topic
+                                                    ._count
+                                                    .Resource
+                                                }
+                                                )
+                                              </button>
 
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => {
-                                                      setShowResourceForm(
-                                                        null
-                                                      );
-                                                      setNewResource(
-                                                        {
-                                                          title: "",
-                                                          description:
-                                                            "",
-                                                          type: "NOTE",
-                                                          file: null,
-                                                        }
-                                                      );
-                                                    }}
-                                                  >
-                                                    <X className="w-4 h-4" />
-                                                  </Button>
-                                                </div>
+                                              <button
+                                                onClick={() =>
+                                                  setActiveTab(
+                                                    "recordings"
+                                                  )
+                                                }
+                                                className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
+                                                  activeTab ===
+                                                  "recordings"
+                                                    ? "border-primary text-primary"
+                                                    : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                                                }`}
+                                              >
+                                                Recordings (
+                                                {
+                                                  topic
+                                                    ._count
+                                                    .Recording
+                                                }
+                                                )
+                                              </button>
 
-                                                <form
-                                                  onSubmit={(e) => {
-                                                    e.preventDefault();
-                                                    handleCreateResource(
-                                                      topic.id
-                                                    );
-                                                  }}
-                                                  className="space-y-3"
+                                              <button
+                                                onClick={() =>
+                                                  setActiveTab(
+                                                    "quizzes"
+                                                  )
+                                                }
+                                                className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
+                                                  activeTab ===
+                                                  "quizzes"
+                                                    ? "border-primary text-primary"
+                                                    : "border-transparent text-gray-500 hover:text-gray-300"
+                                                }`}
+                                              >
+                                                QP & MS (
+                                                {
+                                                  topic
+                                                    ._count
+                                                    .Quiz
+                                                }
+                                                )
+                                              </button>
+                                            </nav>
+                                          </div>
+
+                                          {activeTab ===
+                                            "resources" && (
+                                            <div className="mt-4 space-y-3">
+                                              {showResourceForm ===
+                                              topic.id ? (
+                                                <GlassCard
+                                                  variant="default"
+                                                  padding="md"
                                                 >
-                                                  <Input
-                                                    id="resource-title"
-                                                    label="Title"
-                                                    value={
-                                                      newResource.title
-                                                    }
-                                                    onChange={(e) =>
-                                                      setNewResource(
-                                                        (
-                                                          prev
-                                                        ) => ({
-                                                          ...prev,
-                                                          title:
-                                                            e
-                                                              .target
-                                                              .value,
-                                                        })
-                                                      )
-                                                    }
-                                                    placeholder="e.g., Cell Structure Notes"
-                                                    required
-                                                  />
+                                                  <div className="flex items-center justify-between mb-3">
+                                                    <h4 className="font-medium text-gray-900 dark:text-white">
+                                                      Upload Resource
+                                                    </h4>
 
-                                                  <textarea
-                                                    id="resource-description"
-                                                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                                                    rows={2}
-                                                    placeholder="Description (optional)"
-                                                    value={
-                                                      newResource.description
-                                                    }
-                                                    onChange={(e) =>
-                                                      setNewResource(
-                                                        (
-                                                          prev
-                                                        ) => ({
-                                                          ...prev,
-                                                          description:
-                                                            e
-                                                              .target
-                                                              .value,
-                                                        })
-                                                      )
-                                                    }
-                                                  />
-
-                                                  <div className="flex items-center gap-2">
-                                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                                      Type:
-                                                    </label>
-
-                                                    <select
-                                                      className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                                                      value={
-                                                        newResource.type
-                                                      }
-                                                      onChange={(e) =>
-                                                        setNewResource(
-                                                          (
-                                                            prev
-                                                          ) => ({
-                                                            ...prev,
-                                                            type: e
-                                                              .target
-                                                              .value,
-                                                          })
-                                                        )
-                                                      }
-                                                    >
-                                                      {RESOURCE_TYPES.map(
-                                                        (t) => (
-                                                          <option
-                                                            key={
-                                                              t.value
-                                                            }
-                                                            value={
-                                                              t.value
-                                                            }
-                                                          >
-                                                            {t.icon}{" "}
-                                                            {
-                                                              t.label
-                                                            }
-                                                          </option>
-                                                        )
-                                                      )}
-                                                    </select>
-                                                  </div>
-
-                                                  <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center">
-                                                    <input
-                                                      type="file"
-                                                      id="resource-file"
-                                                      className="hidden"
-                                                      onChange={(e) => {
-                                                        const files =
-                                                          e.target.files;
-
-                                                        if (
-                                                          files &&
-                                                          files[0]
-                                                        ) {
-                                                          setNewResource(
-                                                            (
-                                                              prev
-                                                            ) => ({
-                                                              ...prev,
-                                                              file: files[0],
-                                                            })
-                                                          );
-                                                        }
-                                                      }}
-                                                      accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.png,.jpg,.jpeg,.webp"
-                                                    />
-
-                                                    <label
-                                                      htmlFor="resource-file"
-                                                      className={`cursor-pointer flex flex-col items-center gap-2 ${
-                                                        newResource.file
-                                                          ? "bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700"
-                                                          : ""
-                                                      }`}
-                                                    >
-                                                      {newResource.file ? (
-                                                        <>
-                                                          <Paperclip className="w-8 h-8 text-green-600 dark:text-green-400" />
-
-                                                          <p className="text-sm font-medium text-green-700 dark:text-green-300">
-                                                            {
-                                                              newResource
-                                                                .file
-                                                                .name
-                                                            }
-                                                          </p>
-
-                                                          <p className="text-xs text-green-600 dark:text-green-400">
-                                                            {(
-                                                              newResource
-                                                                .file
-                                                                .size /
-                                                              1024 /
-                                                              1024
-                                                            ).toFixed(
-                                                              2
-                                                            )}{" "}
-                                                            MB
-                                                          </p>
-
-                                                          <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            type="button"
-                                                            onClick={() =>
-                                                              setNewResource(
-                                                                (
-                                                                  prev
-                                                                ) => ({
-                                                                  ...prev,
-                                                                  file: null,
-                                                                })
-                                                              )
-                                                            }
-                                                          >
-                                                            <RotateCcw className="w-3 h-3 mr-1" />{" "}
-                                                            Remove
-                                                          </Button>
-                                                        </>
-                                                      ) : (
-                                                        <>
-                                                          <Upload className="w-8 h-8 text-gray-400" />
-
-                                                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                                                            Drag & drop a file
-                                                            or click to browse
-                                                          </p>
-
-                                                          <p className="text-xs text-gray-400 dark:text-gray-500">
-                                                            PDF, DOC, PPT,
-                                                            XLS, TXT, Images
-                                                            (max 50MB)
-                                                          </p>
-                                                        </>
-                                                      )}
-                                                    </label>
-                                                  </div>
-
-                                                  <div className="flex justify-end gap-2 pt-2">
                                                     <Button
-                                                      type="button"
                                                       variant="ghost"
+                                                      size="icon"
                                                       onClick={() => {
                                                         setShowResourceForm(
                                                           null
@@ -1881,407 +2063,64 @@ export default function AdminContentPage() {
                                                         );
                                                       }}
                                                     >
-                                                      Cancel
-                                                    </Button>
-
-                                                    <Button
-                                                      type="submit"
-                                                      loading={
-                                                        uploadingResource ===
-                                                        topic.id
-                                                      }
-                                                      icon={
-                                                        uploadingResource ===
-                                                        topic.id ? (
-                                                          <Loader2 className="w-4 h-4 animate-spin" />
-                                                        ) : (
-                                                          <Save className="w-4 h-4" />
-                                                        )
-                                                      }
-                                                    >
-                                                      {uploadingResource ===
-                                                      topic.id
-                                                        ? "Uploading..."
-                                                        : "Save Resource"}
+                                                      <X className="w-4 h-4" />
                                                     </Button>
                                                   </div>
 
-                                                  {uploadingResource ===
-                                                    topic.id &&
-                                                    uploadProgress >
-                                                      0 && (
-                                                      <div
-                                                        className="w-full mt-2"
-                                                        role="progressbar"
-                                                        aria-valuenow={
-                                                          uploadProgress
-                                                        }
-                                                        aria-valuemin={
-                                                          0
-                                                        }
-                                                        aria-valuemax={
-                                                          100
-                                                        }
-                                                        aria-label="File upload progress"
-                                                      >
-                                                        <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                                                          <div
-                                                            className="h-full bg-primary transition-all duration-300"
-                                                            style={{
-                                                              width: `${uploadProgress}%`,
-                                                            }}
-                                                          />
-                                                        </div>
+                                                  <form
+                                                    onSubmit={(
+                                                      e
+                                                    ) => {
+                                                      e.preventDefault();
 
-                                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-right">
-                                                          {
-                                                            uploadProgress
-                                                          }
-                                                          %
-                                                        </p>
-                                                      </div>
-                                                    )}
-                                                </form>
-                                              </GlassCard>
-                                            ) : (
-                                              <Button
-                                                variant="outline"
-                                                size="sm"
-                                                icon={
-                                                  <Plus className="w-4 h-4" />
-                                                }
-                                                onClick={() =>
-                                                  setShowResourceForm(
-                                                    topic.id
-                                                  )
-                                                }
-                                                className="w-full justify-start"
-                                              >
-                                                Add Resource
-                                              </Button>
-                                            )}
-
-                                            {/* Resources List */}
-                                            {loadingResources.has(
-                                              topic.id
-                                            ) ? (
-                                              <div
-                                                className="space-y-2"
-                                                aria-busy="true"
-                                              >
-                                                {[1, 2].map(
-                                                  (i) => (
-                                                    <GlassCard
-                                                      key={i}
-                                                      variant="strong"
-                                                      padding="sm"
-                                                      className="animate-pulse"
-                                                    >
-                                                      <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-2" />
-                                                      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2" />
-                                                    </GlassCard>
-                                                  )
-                                                )}
-                                              </div>
-                                            ) : (
-                                              topicResources[
-                                                topic.id
-                                              ] || []
-                                            ).length === 0 ? (
-                                              <GlassCard
-                                                variant="default"
-                                                padding="md"
-                                                className="text-center text-gray-500 dark:text-gray-400"
-                                              >
-                                                <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
-
-                                                <p>
-                                                  No resources yet.
-                                                  Click "Add Resource"
-                                                  to upload.
-                                                </p>
-                                              </GlassCard>
-                                            ) : (
-                                              <div className="space-y-2">
-                                                {(
-                                                  topicResources[
-                                                    topic.id
-                                                  ] || []
-                                                ).map(
-                                                  (resource) => (
-                                                    <GlassCard
-                                                      key={
-                                                        resource.id
-                                                      }
-                                                      variant="strong"
-                                                      padding="sm"
-                                                      className="flex items-center justify-between gap-4"
-                                                    >
-                                                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                        <div className="w-10 h-10 rounded-lg bg-primary/10 dark:bg-primary/20 flex items-center justify-center flex-shrink-0">
-                                                          <Paperclip className="w-5 h-5 text-primary" />
-                                                        </div>
-
-                                                        <div className="min-w-0">
-                                                          <p className="font-medium text-gray-900 dark:text-white truncate">
-                                                            {
-                                                              resource.title
-                                                            }
-                                                          </p>
-
-                                                          <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                                                            <Badge
-                                                              variant="outline"
-                                                              className="text-xs"
-                                                            >
-                                                              {
-                                                                RESOURCE_TYPES.find(
-                                                                  (
-                                                                    t
-                                                                  ) =>
-                                                                    t.value ===
-                                                                    resource.type
-                                                                )?.label ||
-                                                                resource.type
-                                                              }
-                                                            </Badge>
-
-                                                            <span>
-                                                              {(
-                                                                resource.fileSize /
-                                                                1024 /
-                                                                1024
-                                                              ).toFixed(
-                                                                2
-                                                              )}{" "}
-                                                              MB
-                                                            </span>
-
-                                                            <span>
-                                                              {new Date(
-                                                                resource.createdAt
-                                                              ).toLocaleDateString()}
-                                                            </span>
-                                                          </p>
-                                                        </div>
-                                                      </div>
-
-                                                      <div className="flex items-center gap-1 flex-shrink-0">
-                                                        <a
-                                                          href={`/api/files/${encodeURIComponent(
-                                                            resource.fileKey
-                                                          )}`}
-                                                          target="_blank"
-                                                          rel="noopener noreferrer"
-                                                          title="Open resource"
-                                                        >
-                                                          <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                          >
-                                                            <Eye className="w-4 h-4" />
-                                                          </Button>
-                                                        </a>
-
-                                                        <a
-                                                          href={`/api/files/${encodeURIComponent(
-                                                            resource.fileKey
-                                                          )}?download=true`}
-                                                          download
-                                                          title="Download resource"
-                                                        >
-                                                          <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                          >
-                                                            <Download className="w-4 h-4" />
-                                                          </Button>
-                                                        </a>
-
-                                                        <Button
-                                                          variant="ghost"
-                                                          size="icon"
-                                                          className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                                          onClick={() =>
-                                                            handleDeleteResource(
-                                                              resource.id,
-                                                              topic.id
-                                                            )
-                                                          }
-                                                          title="Delete resource"
-                                                        >
-                                                          <Trash2 className="w-4 h-4" />
-                                                        </Button>
-                                                      </div>
-                                                    </GlassCard>
-                                                  )
-                                                )}
-                                              </div>
-                                            )}
-                                          </div>
-                                        )}
-
-                                        {/* Recordings Tab */}
-                                        {activeTab ===
-                                          "recordings" && (
-                                          <div className="mt-4 space-y-3">
-                                            {showRecordingForm ===
-                                            topic.id ? (
-                                              <GlassCard
-                                                variant="default"
-                                                padding="md"
-                                              >
-                                                <div className="flex items-center justify-between mb-3">
-                                                  <h4 className="font-medium text-gray-900 dark:text-white">
-                                                    Add Recording
-                                                  </h4>
-
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => {
-                                                      setShowRecordingForm(
-                                                        null
-                                                      );
-
-                                                      setNewRecording(
-                                                        {
-                                                          title: "",
-                                                          description:
-                                                            "",
-                                                          streamVideoId:
-                                                            "",
-                                                          durationSeconds: 0,
-                                                          recordedDate:
-                                                            "",
-                                                        }
+                                                      handleCreateResource(
+                                                        topic.id
                                                       );
                                                     }}
+                                                    className="space-y-3"
                                                   >
-                                                    <X className="w-4 h-4" />
-                                                  </Button>
-                                                </div>
-
-                                                <form
-                                                  onSubmit={(e) => {
-                                                    e.preventDefault();
-                                                    handleCreateRecording(
-                                                      topic.id
-                                                    );
-                                                  }}
-                                                  className="space-y-3"
-                                                >
-                                                  <Input
-                                                    id="recording-title"
-                                                    label="Title"
-                                                    value={
-                                                      newRecording.title
-                                                    }
-                                                    onChange={(e) =>
-                                                      setNewRecording(
-                                                        (
-                                                          prev
-                                                        ) => ({
-                                                          ...prev,
-                                                          title:
-                                                            e
-                                                              .target
-                                                              .value,
-                                                        })
-                                                      )
-                                                    }
-                                                    placeholder="e.g., Cell Structure Lecture"
-                                                    required
-                                                  />
-
-                                                  <textarea
-                                                    id="recording-description"
-                                                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                                                    rows={2}
-                                                    placeholder="Description (optional)"
-                                                    value={
-                                                      newRecording.description
-                                                    }
-                                                    onChange={(e) =>
-                                                      setNewRecording(
-                                                        (
-                                                          prev
-                                                        ) => ({
-                                                          ...prev,
-                                                          description:
-                                                            e
-                                                              .target
-                                                              .value,
-                                                        })
-                                                      )
-                                                    }
-                                                  />
-
-                                                  <Input
-                                                    id="recording-streamVideoId"
-                                                    label="Stream Video ID (from Mux/Cloudflare Stream)"
-                                                    value={
-                                                      newRecording.streamVideoId
-                                                    }
-                                                    onChange={(e) =>
-                                                      setNewRecording(
-                                                        (
-                                                          prev
-                                                        ) => ({
-                                                          ...prev,
-                                                          streamVideoId:
-                                                            e
-                                                              .target
-                                                              .value,
-                                                        })
-                                                      )
-                                                    }
-                                                    placeholder="e.g., abc123xyz"
-                                                    required
-                                                  />
-
-                                                  <div className="grid grid-cols-2 gap-3">
                                                     <Input
-                                                      id="recording-duration"
-                                                      label="Duration (seconds)"
-                                                      type="number"
-                                                      value={String(
-                                                        newRecording.durationSeconds
-                                                      )}
+                                                      id="resource-title"
+                                                      label="Title"
+                                                      value={
+                                                        newResource.title
+                                                      }
                                                       onChange={(
                                                         e
                                                       ) =>
-                                                        setNewRecording(
+                                                        setNewResource(
                                                           (
                                                             prev
                                                           ) => ({
                                                             ...prev,
-                                                            durationSeconds:
-                                                              parseInt(
-                                                                e
-                                                                  .target
-                                                                  .value
-                                                              ) || 0,
+                                                            title:
+                                                              e
+                                                                .target
+                                                                .value,
                                                           })
                                                         )
                                                       }
-                                                      placeholder="Optional"
+                                                      placeholder="e.g., Cell Structure Notes"
+                                                      required
                                                     />
 
-                                                    <Input
-                                                      id="recording-date"
-                                                      label="Recorded Date"
-                                                      type="date"
+                                                    <textarea
+                                                      id="resource-description"
+                                                      className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                                                      rows={2}
+                                                      placeholder="Description (optional)"
                                                       value={
-                                                        newRecording.recordedDate
+                                                        newResource.description
                                                       }
-                                                      onChange={(e) =>
-                                                        setNewRecording(
+                                                      onChange={(
+                                                        e
+                                                      ) =>
+                                                        setNewResource(
                                                           (
                                                             prev
                                                           ) => ({
                                                             ...prev,
-                                                            recordedDate:
+                                                            description:
                                                               e
                                                                 .target
                                                                 .value,
@@ -2289,29 +2128,473 @@ export default function AdminContentPage() {
                                                         )
                                                       }
                                                     />
-                                                  </div>
 
-                                                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                                                    Upload your video
-                                                    to Mux or
-                                                    Cloudflare Stream
-                                                    first, then paste
-                                                    the Stream Video ID
-                                                    here.
+                                                    <div className="flex items-center gap-2">
+                                                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                                        Type:
+                                                      </label>
 
-                                                    <a
-                                                      href="/api/upload/video"
-                                                      target="_blank"
-                                                      className="text-primary hover:underline ml-1"
-                                                    >
-                                                      Create Mux upload URL
-                                                    </a>
+                                                      <select
+                                                        className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                                                        value={
+                                                          newResource.type
+                                                        }
+                                                        onChange={(
+                                                          e
+                                                        ) =>
+                                                          setNewResource(
+                                                            (
+                                                              prev
+                                                            ) => ({
+                                                              ...prev,
+                                                              type: e
+                                                                .target
+                                                                .value,
+                                                            })
+                                                          )
+                                                        }
+                                                      >
+                                                        {RESOURCE_TYPES.map(
+                                                          (
+                                                            t
+                                                          ) => (
+                                                            <option
+                                                              key={
+                                                                t.value
+                                                              }
+                                                              value={
+                                                                t.value
+                                                              }
+                                                            >
+                                                              {
+                                                                t.icon
+                                                              }{" "}
+                                                              {
+                                                                t.label
+                                                              }
+                                                            </option>
+                                                          )
+                                                        )}
+                                                      </select>
+                                                    </div>
+
+                                                    <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center">
+                                                      <input
+                                                        type="file"
+                                                        id="resource-file"
+                                                        className="hidden"
+                                                        onChange={(
+                                                          e
+                                                        ) => {
+                                                          const files =
+                                                            e
+                                                              .target
+                                                              .files;
+
+                                                          if (
+                                                            files &&
+                                                            files[0]
+                                                          ) {
+                                                            const selectedFile =
+                                                              files[0];
+
+                                                            if (
+                                                              selectedFile.size >
+                                                              MAX_FILE_SIZE
+                                                            ) {
+                                                              showToast(
+                                                                "error",
+                                                                "File is too large. Maximum allowed size is 100 MB."
+                                                              );
+
+                                                              e.currentTarget.value =
+                                                                "";
+
+                                                              return;
+                                                            }
+
+                                                            setNewResource(
+                                                              (
+                                                                prev
+                                                              ) => ({
+                                                                ...prev,
+                                                                file: selectedFile,
+                                                              })
+                                                            );
+                                                          }
+                                                        }}
+                                                        accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.png,.jpg,.jpeg,.webp"
+                                                      />
+
+                                                      <label
+                                                        htmlFor="resource-file"
+                                                        className={`cursor-pointer flex flex-col items-center gap-2 ${
+                                                          newResource.file
+                                                            ? "bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700"
+                                                            : ""
+                                                        }`}
+                                                      >
+                                                        {newResource.file ? (
+                                                          <>
+                                                            <Paperclip className="w-8 h-8 text-green-600 dark:text-green-400" />
+
+                                                            <p className="text-sm font-medium text-green-700 dark:text-green-300">
+                                                              {
+                                                                newResource
+                                                                  .file
+                                                                  .name
+                                                              }
+                                                            </p>
+
+                                                            <p className="text-xs text-green-600 dark:text-green-400">
+                                                              {(
+                                                                newResource
+                                                                  .file
+                                                                  .size /
+                                                                1024 /
+                                                                1024
+                                                              ).toFixed(
+                                                                2
+                                                              )}{" "}
+                                                              MB
+                                                            </p>
+
+                                                            <Button
+                                                              variant="ghost"
+                                                              size="sm"
+                                                              type="button"
+                                                              onClick={() =>
+                                                                setNewResource(
+                                                                  (
+                                                                    prev
+                                                                  ) => ({
+                                                                    ...prev,
+                                                                    file: null,
+                                                                  })
+                                                                )
+                                                              }
+                                                            >
+                                                              <RotateCcw className="w-3 h-3 mr-1" />
+                                                              Remove
+                                                            </Button>
+                                                          </>
+                                                        ) : (
+                                                          <>
+                                                            <Upload className="w-8 h-8 text-gray-400" />
+
+                                                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                                                              Drag &
+                                                              drop a
+                                                              file or
+                                                              click to
+                                                              browse
+                                                            </p>
+
+                                                            <p className="text-xs text-gray-400 dark:text-gray-500">
+                                                              PDF,
+                                                              DOC,
+                                                              PPT,
+                                                              XLS,
+                                                              TXT,
+                                                              Images
+                                                              (max
+                                                              100MB)
+                                                            </p>
+                                                          </>
+                                                        )}
+                                                      </label>
+                                                    </div>
+
+                                                    <div className="flex justify-end gap-2 pt-2">
+                                                      <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        onClick={() => {
+                                                          setShowResourceForm(
+                                                            null
+                                                          );
+
+                                                          setNewResource(
+                                                            {
+                                                              title: "",
+                                                              description:
+                                                                "",
+                                                              type: "NOTE",
+                                                              file: null,
+                                                            }
+                                                          );
+                                                        }}
+                                                      >
+                                                        Cancel
+                                                      </Button>
+
+                                                      <Button
+                                                        type="submit"
+                                                        loading={
+                                                          uploadingResource ===
+                                                          topic.id
+                                                        }
+                                                        icon={
+                                                          uploadingResource ===
+                                                          topic.id ? (
+                                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                                          ) : (
+                                                            <Save className="w-4 h-4" />
+                                                          )
+                                                        }
+                                                      >
+                                                        {uploadingResource ===
+                                                        topic.id
+                                                          ? "Uploading..."
+                                                          : "Save Resource"}
+                                                      </Button>
+                                                    </div>
+
+                                                    {uploadingResource ===
+                                                      topic.id &&
+                                                      uploadProgress >
+                                                        0 && (
+                                                        <div
+                                                          className="w-full mt-2"
+                                                          role="progressbar"
+                                                          aria-valuenow={
+                                                            uploadProgress
+                                                          }
+                                                          aria-valuemin={
+                                                            0
+                                                          }
+                                                          aria-valuemax={
+                                                            100
+                                                          }
+                                                          aria-label="File upload progress"
+                                                        >
+                                                          <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                                            <div
+                                                              className="h-full bg-primary transition-all duration-300"
+                                                              style={{
+                                                                width: `${uploadProgress}%`,
+                                                              }}
+                                                            />
+                                                          </div>
+
+                                                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-right">
+                                                            {
+                                                              uploadProgress
+                                                            }
+                                                            %
+                                                          </p>
+                                                        </div>
+                                                      )}
+                                                  </form>
+                                                </GlassCard>
+                                              ) : (
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  icon={
+                                                    <Plus className="w-4 h-4" />
+                                                  }
+                                                  onClick={() =>
+                                                    setShowResourceForm(
+                                                      topic.id
+                                                    )
+                                                  }
+                                                  className="w-full justify-start"
+                                                >
+                                                  Add Resource
+                                                </Button>
+                                              )}
+
+                                              {loadingResources.has(
+                                                topic.id
+                                              ) ? (
+                                                <div
+                                                  className="space-y-2"
+                                                  aria-busy="true"
+                                                >
+                                                  {[1, 2].map(
+                                                    (
+                                                      i
+                                                    ) => (
+                                                      <GlassCard
+                                                        key={
+                                                          i
+                                                        }
+                                                        variant="strong"
+                                                        padding="sm"
+                                                        className="animate-pulse"
+                                                      >
+                                                        <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-2" />
+                                                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2" />
+                                                      </GlassCard>
+                                                    )
+                                                  )}
+                                                </div>
+                                              ) : (
+                                                topicResources[
+                                                  topic.id
+                                                ] || []
+                                              ).length ===
+                                                0 ? (
+                                                <GlassCard
+                                                  variant="default"
+                                                  padding="md"
+                                                  className="text-center text-gray-500 dark:text-gray-400"
+                                                >
+                                                  <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
+
+                                                  <p>
+                                                    No
+                                                    resources
+                                                    yet.
+                                                    Click
+                                                    "Add
+                                                    Resource"
+                                                    to
+                                                    upload.
                                                   </p>
+                                                </GlassCard>
+                                              ) : (
+                                                <div className="space-y-2">
+                                                  {(
+                                                    topicResources[
+                                                      topic
+                                                        .id
+                                                    ] ||
+                                                    []
+                                                  ).map(
+                                                    (
+                                                      resource
+                                                    ) => (
+                                                      <GlassCard
+                                                        key={
+                                                          resource.id
+                                                        }
+                                                        variant="strong"
+                                                        padding="sm"
+                                                        className="flex items-center justify-between gap-4"
+                                                      >
+                                                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                          <div className="w-10 h-10 rounded-lg bg-primary/10 dark:bg-primary/20 flex items-center justify-center flex-shrink-0">
+                                                            <Paperclip className="w-5 h-5 text-primary" />
+                                                          </div>
 
-                                                  <div className="flex justify-end gap-2 pt-2">
+                                                          <div className="min-w-0">
+                                                            <p className="font-medium text-gray-900 dark:text-white truncate">
+                                                              {
+                                                                resource.title
+                                                              }
+                                                            </p>
+
+                                                            <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                                                              <Badge
+                                                                variant="outline"
+                                                                className="text-xs"
+                                                              >
+                                                                {
+                                                                  RESOURCE_TYPES.find(
+                                                                    (
+                                                                      t
+                                                                    ) =>
+                                                                      t.value ===
+                                                                      resource.type
+                                                                  )?.label ||
+                                                                  resource.type
+                                                                }
+                                                              </Badge>
+
+                                                              <span>
+                                                                {(
+                                                                  resource.fileSize /
+                                                                  1024 /
+                                                                  1024
+                                                                ).toFixed(
+                                                                  2
+                                                                )}{" "}
+                                                                MB
+                                                              </span>
+
+                                                              <span>
+                                                                {new Date(
+                                                                  resource.createdAt
+                                                                ).toLocaleDateString()}
+                                                              </span>
+                                                            </p>
+                                                          </div>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                                          <a
+                                                            href={getResourceOpenUrl(
+                                                              resource.fileKey
+                                                            )}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            title="Open resource"
+                                                          >
+                                                            <Button
+                                                              variant="ghost"
+                                                              size="icon"
+                                                            >
+                                                              <Eye className="w-4 h-4" />
+                                                            </Button>
+                                                          </a>
+
+                                                          <a
+                                                            href={getResourceDownloadUrl(
+                                                              resource.fileKey
+                                                            )}
+                                                            download
+                                                            title="Download resource"
+                                                          >
+                                                            <Button
+                                                              variant="ghost"
+                                                              size="icon"
+                                                            >
+                                                              <Download className="w-4 h-4" />
+                                                            </Button>
+                                                          </a>
+
+                                                          <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                            onClick={() =>
+                                                              handleDeleteResource(
+                                                                resource.id,
+                                                                topic.id
+                                                              )
+                                                            }
+                                                            title="Delete resource"
+                                                          >
+                                                            <Trash2 className="w-4 h-4" />
+                                                          </Button>
+                                                        </div>
+                                                      </GlassCard>
+                                                    )
+                                                  )}
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+
+                                          {activeTab ===
+                                            "recordings" && (
+                                            <div className="mt-4 space-y-3">
+                                              {showRecordingForm ===
+                                              topic.id ? (
+                                                <GlassCard
+                                                  variant="default"
+                                                  padding="md"
+                                                >
+                                                  <div className="flex items-center justify-between mb-3">
+                                                    <h4 className="font-medium text-gray-900 dark:text-white">
+                                                      Add Recording
+                                                    </h4>
+
                                                     <Button
-                                                      type="button"
                                                       variant="ghost"
+                                                      size="icon"
                                                       onClick={() => {
                                                         setShowRecordingForm(
                                                           null
@@ -2331,396 +2614,190 @@ export default function AdminContentPage() {
                                                         );
                                                       }}
                                                     >
-                                                      Cancel
-                                                    </Button>
-
-                                                    <Button
-                                                      type="submit"
-                                                      loading={
-                                                        uploadingRecording ===
-                                                        topic.id
-                                                      }
-                                                      icon={
-                                                        uploadingRecording ===
-                                                        topic.id ? (
-                                                          <Loader2 className="w-4 h-4 animate-spin" />
-                                                        ) : (
-                                                          <Save className="w-4 h-4" />
-                                                        )
-                                                      }
-                                                    >
-                                                      {uploadingRecording ===
-                                                      topic.id
-                                                        ? "Saving..."
-                                                        : "Save Recording"}
+                                                      <X className="w-4 h-4" />
                                                     </Button>
                                                   </div>
-                                                </form>
-                                              </GlassCard>
-                                            ) : (
-                                              <Button
-                                                variant="outline"
-                                                size="sm"
-                                                icon={
-                                                  <Plus className="w-4 h-4" />
-                                                }
-                                                onClick={() =>
-                                                  setShowRecordingForm(
-                                                    topic.id
-                                                  )
-                                                }
-                                                className="w-full justify-start"
-                                              >
-                                                Add Recording
-                                              </Button>
-                                            )}
 
-                                            {/* Recordings List */}
-                                            {loadingRecordings.has(
-                                              topic.id
-                                            ) ? (
-                                              <div
-                                                className="space-y-2"
-                                                aria-busy="true"
-                                              >
-                                                {[1, 2].map(
-                                                  (i) => (
-                                                    <GlassCard
-                                                      key={i}
-                                                      variant="strong"
-                                                      padding="sm"
-                                                      className="animate-pulse"
-                                                    >
-                                                      <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-2" />
-                                                      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2" />
-                                                    </GlassCard>
-                                                  )
-                                                )}
-                                              </div>
-                                            ) : (
-                                              topicRecordings[
-                                                topic.id
-                                              ] || []
-                                            ).length === 0 ? (
-                                              <GlassCard
-                                                variant="default"
-                                                padding="md"
-                                                className="text-center text-gray-500 dark:text-gray-400"
-                                              >
-                                                <FileVideo className="w-12 h-12 mx-auto mb-2 opacity-50" />
-
-                                                <p>
-                                                  No recordings yet.
-                                                  Click "Add Recording"
-                                                  to add a video.
-                                                </p>
-                                              </GlassCard>
-                                            ) : (
-                                              <div className="space-y-2">
-                                                {(
-                                                  topicRecordings[
-                                                    topic.id
-                                                  ] || []
-                                                ).map(
-                                                  (recording) => (
-                                                    <GlassCard
-                                                      key={
-                                                        recording.id
-                                                      }
-                                                      variant="strong"
-                                                      padding="sm"
-                                                      className="flex items-center justify-between gap-4"
-                                                    >
-                                                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                        <div className="w-10 h-10 rounded-lg bg-secondary/10 dark:bg-secondary/20 flex items-center justify-center flex-shrink-0">
-                                                          <FileVideo className="w-5 h-5 text-secondary" />
-                                                        </div>
-
-                                                        <div className="min-w-0">
-                                                          <p className="font-medium text-gray-900 dark:text-white truncate">
-                                                            {
-                                                              recording.title
-                                                            }
-                                                          </p>
-
-                                                          <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                                                            {recording.durationSeconds ? (
-                                                              <span>
-                                                                {Math.floor(
-                                                                  recording.durationSeconds /
-                                                                    60
-                                                                )}
-                                                                :
-                                                                {String(
-                                                                  recording.durationSeconds %
-                                                                    60
-                                                                ).padStart(
-                                                                  2,
-                                                                  "0"
-                                                                )}
-                                                              </span>
-                                                            ) : (
-                                                              <span>
-                                                                Unknown
-                                                                duration
-                                                              </span>
-                                                            )}
-
-                                                            {recording.recordedDate && (
-                                                              <span>
-                                                                {new Date(
-                                                                  recording.recordedDate
-                                                                ).toLocaleDateString()}
-                                                              </span>
-                                                            )}
-
-                                                            <span>
-                                                              {new Date(
-                                                                recording.createdAt
-                                                              ).toLocaleDateString()}
-                                                            </span>
-                                                          </p>
-                                                        </div>
-                                                      </div>
-
-                                                      <div className="flex items-center gap-1 flex-shrink-0">
-                                                        <Button
-                                                          variant="ghost"
-                                                          size="icon"
-                                                          onClick={() =>
-                                                            window.open(
-                                                              `https://stream.mux.com/${recording.streamVideoId}`,
-                                                              "_blank"
-                                                            )
-                                                          }
-                                                          title="Preview video"
-                                                        >
-                                                          <Eye className="w-4 h-4" />
-                                                        </Button>
-
-                                                        <Button
-                                                          variant="ghost"
-                                                          size="icon"
-                                                          className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                                          onClick={() =>
-                                                            handleDeleteRecording(
-                                                              recording.id,
-                                                              topic.id
-                                                            )
-                                                          }
-                                                          title="Delete recording"
-                                                        >
-                                                          <Trash2 className="w-4 h-4" />
-                                                        </Button>
-                                                      </div>
-                                                    </GlassCard>
-                                                  )
-                                                )}
-                                              </div>
-                                            )}
-                                          </div>
-                                        )}
-
-                                        {/* Quizzes Tab */}
-                                        {activeTab ===
-                                          "quizzes" && (
-                                          <div className="mt-4 space-y-3">
-                                            {/* AI Generate Form */}
-                                            {showAIGenerate ===
-                                            topic.id ? (
-                                              <GlassCard
-                                                variant="default"
-                                                padding="md"
-                                              >
-                                                <div className="flex items-center justify-between mb-4">
-                                                  <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                                                    <Brain className="w-5 h-5 text-primary" />
-                                                    Generate Quiz with
-                                                    AI
-                                                  </h4>
-
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => {
-                                                      setShowAIGenerate(
-                                                        null
-                                                      );
-                                                      setGeneratedQuiz(
-                                                        null
-                                                      );
-                                                    }}
-                                                  >
-                                                    <X className="w-4 h-4" />
-                                                  </Button>
-                                                </div>
-
-                                                {/* Configuration Form */}
-                                                {(!generatedQuiz ||
-                                                  showPreview ===
-                                                    topic.id) && (
                                                   <form
-                                                    onSubmit={(e) => {
+                                                    onSubmit={(
+                                                      e
+                                                    ) => {
                                                       e.preventDefault();
-                                                      handleGenerateQuiz(
+
+                                                      handleCreateRecording(
                                                         topic.id
                                                       );
                                                     }}
-                                                    className="space-y-4"
+                                                    className="space-y-3"
                                                   >
-                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                      <div>
-                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                          Question Count
-                                                        </label>
+                                                    <Input
+                                                      id="recording-title"
+                                                      label="Title"
+                                                      value={
+                                                        newRecording.title
+                                                      }
+                                                      onChange={(
+                                                        e
+                                                      ) =>
+                                                        setNewRecording(
+                                                          (
+                                                            prev
+                                                          ) => ({
+                                                            ...prev,
+                                                            title:
+                                                              e
+                                                                .target
+                                                                .value,
+                                                          })
+                                                        )
+                                                      }
+                                                      placeholder="e.g., Cell Structure Lecture"
+                                                      required
+                                                    />
 
-                                                        <Input
-                                                          type="number"
-                                                          min={1}
-                                                          max={20}
-                                                          value={
-                                                            aiConfig.questionCount
-                                                          }
-                                                          onChange={(
-                                                            e
-                                                          ) =>
-                                                            setAiConfig(
-                                                              (
-                                                                prev
-                                                              ) => ({
-                                                                ...prev,
-                                                                questionCount:
-                                                                  parseInt(
-                                                                    e
-                                                                      .target
-                                                                      .value
-                                                                  ) || 1,
-                                                              })
-                                                            )
-                                                          }
-                                                          required
-                                                        />
-                                                      </div>
+                                                    <textarea
+                                                      id="recording-description"
+                                                      className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                                                      rows={2}
+                                                      placeholder="Description (optional)"
+                                                      value={
+                                                        newRecording.description
+                                                      }
+                                                      onChange={(
+                                                        e
+                                                      ) =>
+                                                        setNewRecording(
+                                                          (
+                                                            prev
+                                                          ) => ({
+                                                            ...prev,
+                                                            description:
+                                                              e
+                                                                .target
+                                                                .value,
+                                                          })
+                                                        )
+                                                      }
+                                                    />
 
-                                                      <div>
-                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                          Difficulty
-                                                        </label>
+                                                    <Input
+                                                      id="recording-streamVideoId"
+                                                      label="Stream Video ID (from Mux/Cloudflare Stream)"
+                                                      value={
+                                                        newRecording.streamVideoId
+                                                      }
+                                                      onChange={(
+                                                        e
+                                                      ) =>
+                                                        setNewRecording(
+                                                          (
+                                                            prev
+                                                          ) => ({
+                                                            ...prev,
+                                                            streamVideoId:
+                                                              e
+                                                                .target
+                                                                .value,
+                                                          })
+                                                        )
+                                                      }
+                                                      placeholder="e.g., abc123xyz"
+                                                      required
+                                                    />
 
-                                                        <select
-                                                          className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                                                          value={
-                                                            aiConfig.difficulty
-                                                          }
-                                                          onChange={(
-                                                            e
-                                                          ) =>
-                                                            setAiConfig(
-                                                              (
-                                                                prev
-                                                              ) => ({
-                                                                ...prev,
-                                                                difficulty:
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                      <Input
+                                                        id="recording-duration"
+                                                        label="Duration (seconds)"
+                                                        type="number"
+                                                        value={String(
+                                                          newRecording.durationSeconds
+                                                        )}
+                                                        onChange={(
+                                                          e
+                                                        ) =>
+                                                          setNewRecording(
+                                                            (
+                                                              prev
+                                                            ) => ({
+                                                              ...prev,
+                                                              durationSeconds:
+                                                                parseInt(
                                                                   e
                                                                     .target
-                                                                    .value as
-                                                                    | "core"
-                                                                    | "extended"
-                                                                    | "mixed",
-                                                              })
-                                                            )
-                                                          }
-                                                        >
-                                                          <option value="core">
-                                                            Core
-                                                            (Grades C-G)
-                                                          </option>
-                                                          <option value="extended">
-                                                            Extended
-                                                            (Grades A*-C)
-                                                          </option>
-                                                          <option value="mixed">
-                                                            Mixed Core &
-                                                            Extended
-                                                          </option>
-                                                        </select>
-                                                      </div>
+                                                                    .value
+                                                                ) ||
+                                                                0,
+                                                            })
+                                                          )
+                                                        }
+                                                        placeholder="Optional"
+                                                      />
 
-                                                      <div>
-                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                          Question Types
-                                                        </label>
-
-                                                        <div className="flex gap-2">
-                                                          {[
-                                                            "MULTIPLE_CHOICE",
-                                                            "SHORT_ANSWER",
-                                                            "ESSAY",
-                                                          ].map(
-                                                            (t) => (
-                                                              <label
-                                                                key={t}
-                                                                className="flex items-center gap-1 text-sm cursor-pointer"
-                                                              >
-                                                                <input
-                                                                  type="checkbox"
-                                                                  checked={aiConfig.types.includes(
-                                                                    t
-                                                                  )}
-                                                                  onChange={(
-                                                                    e
-                                                                  ) =>
-                                                                    setAiConfig(
-                                                                      (
-                                                                        prev
-                                                                      ) => ({
-                                                                        ...prev,
-                                                                        types:
-                                                                          e
-                                                                            .target
-                                                                            .checked
-                                                                            ? [
-                                                                                ...prev.types,
-                                                                                t,
-                                                                              ]
-                                                                            : prev.types.filter(
-                                                                                (
-                                                                                  x
-                                                                                ) =>
-                                                                                  x !==
-                                                                                  t
-                                                                              ),
-                                                                      })
-                                                                    )
-                                                                  }
-                                                                  className="rounded border-gray-300 text-primary focus:ring-primary"
-                                                                />
-
-                                                                <span className="capitalize">
-                                                                  {t
-                                                                    .replace(
-                                                                      /_/g,
-                                                                      " "
-                                                                    )
-                                                                    .toLowerCase()}
-                                                                </span>
-                                                              </label>
-                                                            )
-                                                          )}
-                                                        </div>
-                                                      </div>
+                                                      <Input
+                                                        id="recording-date"
+                                                        label="Recorded Date"
+                                                        type="date"
+                                                        value={
+                                                          newRecording.recordedDate
+                                                        }
+                                                        onChange={(
+                                                          e
+                                                        ) =>
+                                                          setNewRecording(
+                                                            (
+                                                              prev
+                                                            ) => ({
+                                                              ...prev,
+                                                              recordedDate:
+                                                                e
+                                                                  .target
+                                                                  .value,
+                                                            })
+                                                          )
+                                                        }
+                                                      />
                                                     </div>
 
-                                                    <div className="flex justify-end gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                      Upload your video
+                                                      to Mux or
+                                                      Cloudflare
+                                                      Stream first,
+                                                      then paste the
+                                                      Stream Video ID
+                                                      here.
+
+                                                      <a
+                                                        href="/api/upload/video"
+                                                        target="_blank"
+                                                        className="text-primary hover:underline ml-1"
+                                                      >
+                                                        Create Mux
+                                                        upload URL
+                                                      </a>
+                                                    </p>
+
+                                                    <div className="flex justify-end gap-2 pt-2">
                                                       <Button
                                                         type="button"
                                                         variant="ghost"
                                                         onClick={() => {
-                                                          setShowAIGenerate(
+                                                          setShowRecordingForm(
                                                             null
                                                           );
-                                                          setGeneratedQuiz(
-                                                            null
+
+                                                          setNewRecording(
+                                                            {
+                                                              title: "",
+                                                              description:
+                                                                "",
+                                                              streamVideoId:
+                                                                "",
+                                                              durationSeconds: 0,
+                                                              recordedDate:
+                                                                "",
+                                                            }
                                                           );
                                                         }}
                                                       >
@@ -2730,204 +2807,400 @@ export default function AdminContentPage() {
                                                       <Button
                                                         type="submit"
                                                         loading={
-                                                          aiGenerating ===
+                                                          uploadingRecording ===
                                                           topic.id
                                                         }
                                                         icon={
-                                                          aiGenerating ===
+                                                          uploadingRecording ===
                                                           topic.id ? (
                                                             <Loader2 className="w-4 h-4 animate-spin" />
                                                           ) : (
-                                                            <Zap className="w-4 h-4" />
+                                                            <Save className="w-4 h-4" />
                                                           )
                                                         }
                                                       >
-                                                        {aiGenerating ===
+                                                        {uploadingRecording ===
                                                         topic.id
-                                                          ? "Generating..."
-                                                          : "Generate Quiz"}
+                                                          ? "Saving..."
+                                                          : "Save Recording"}
                                                       </Button>
                                                     </div>
                                                   </form>
-                                                )}
+                                                </GlassCard>
+                                              ) : (
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  icon={
+                                                    <Plus className="w-4 h-4" />
+                                                  }
+                                                  onClick={() =>
+                                                    setShowRecordingForm(
+                                                      topic.id
+                                                    )
+                                                  }
+                                                  className="w-full justify-start"
+                                                >
+                                                  Add Recording
+                                                </Button>
+                                              )}
 
-                                                {/* Preview Generated Quiz */}
-                                                {generatedQuiz &&
-                                                  showPreview ===
-                                                    topic.id && (
-                                                    <div className="space-y-4">
-                                                      <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                                                        <div className="flex items-center justify-between">
-                                                          <div>
-                                                            <p className="font-medium text-green-800 dark:text-green-200">
-                                                              Quiz Generated
-                                                              Successfully!
+                                              {loadingRecordings.has(
+                                                topic.id
+                                              ) ? (
+                                                <div
+                                                  className="space-y-2"
+                                                  aria-busy="true"
+                                                >
+                                                  {[1, 2].map(
+                                                    (
+                                                      i
+                                                    ) => (
+                                                      <GlassCard
+                                                        key={
+                                                          i
+                                                        }
+                                                        variant="strong"
+                                                        padding="sm"
+                                                        className="animate-pulse"
+                                                      >
+                                                        <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-2" />
+                                                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2" />
+                                                      </GlassCard>
+                                                    )
+                                                  )}
+                                                </div>
+                                              ) : (
+                                                topicRecordings[
+                                                  topic.id
+                                                ] || []
+                                              ).length ===
+                                                0 ? (
+                                                <GlassCard
+                                                  variant="default"
+                                                  padding="md"
+                                                  className="text-center text-gray-500 dark:text-gray-400"
+                                                >
+                                                  <FileVideo className="w-12 h-12 mx-auto mb-2 opacity-50" />
+
+                                                  <p>
+                                                    No
+                                                    recordings
+                                                    yet. Click
+                                                    "Add
+                                                    Recording"
+                                                    to add a
+                                                    video.
+                                                  </p>
+                                                </GlassCard>
+                                              ) : (
+                                                <div className="space-y-2">
+                                                  {(
+                                                    topicRecordings[
+                                                      topic.id
+                                                    ] ||
+                                                    []
+                                                  ).map(
+                                                    (
+                                                      recording
+                                                    ) => (
+                                                      <GlassCard
+                                                        key={
+                                                          recording.id
+                                                        }
+                                                        variant="strong"
+                                                        padding="sm"
+                                                        className="flex items-center justify-between gap-4"
+                                                      >
+                                                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                          <div className="w-10 h-10 rounded-lg bg-secondary/10 dark:bg-secondary/20 flex items-center justify-center flex-shrink-0">
+                                                            <FileVideo className="w-5 h-5 text-secondary" />
+                                                          </div>
+
+                                                          <div className="min-w-0">
+                                                            <p className="font-medium text-gray-900 dark:text-white truncate">
+                                                              {
+                                                                recording.title
+                                                              }
                                                             </p>
 
-                                                            <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-4">
-                                                              <span>
-                                                                {
-                                                                  generatedQuiz
-                                                                    .questions
-                                                                    .length
-                                                                }{" "}
-                                                                questions ·
-                                                                ~
-                                                                {Math.floor(
-                                                                  generatedQuiz.timeLimitSeconds /
-                                                                    60
-                                                                )}{" "}
-                                                                min
-                                                              </span>
+                                                            <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                                                              {recording.durationSeconds ? (
+                                                                <span>
+                                                                  {Math.floor(
+                                                                    recording.durationSeconds /
+                                                                      60
+                                                                  )}
+                                                                  :
+                                                                  {String(
+                                                                    recording.durationSeconds %
+                                                                      60
+                                                                  ).padStart(
+                                                                    2,
+                                                                    "0"
+                                                                  )}
+                                                                </span>
+                                                              ) : (
+                                                                <span>
+                                                                  Unknown
+                                                                  duration
+                                                                </span>
+                                                              )}
 
-                                                              <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded text-xs font-medium">
-                                                                AI Provider:{" "}
-                                                                {generatedQuiz.meta
-                                                                  ?.provider ||
-                                                                  "Unknown"}
+                                                              {recording.recordedDate && (
+                                                                <span>
+                                                                  {new Date(
+                                                                    recording.recordedDate
+                                                                  ).toLocaleDateString()}
+                                                                </span>
+                                                              )}
+
+                                                              <span>
+                                                                {new Date(
+                                                                  recording.createdAt
+                                                                ).toLocaleDateString()}
                                                               </span>
                                                             </p>
                                                           </div>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                                          <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() =>
+                                                              window.open(
+                                                                `https://stream.mux.com/${recording.streamVideoId}`,
+                                                                "_blank"
+                                                              )
+                                                            }
+                                                            title="Preview video"
+                                                          >
+                                                            <Eye className="w-4 h-4" />
+                                                          </Button>
 
                                                           <Button
-                                                            variant="outline"
-                                                            size="sm"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                                                             onClick={() =>
-                                                              setShowPreview(
-                                                                null
+                                                              handleDeleteRecording(
+                                                                recording.id,
+                                                                topic.id
+                                                              )
+                                                            }
+                                                            title="Delete recording"
+                                                          >
+                                                            <Trash2 className="w-4 h-4" />
+                                                          </Button>
+                                                        </div>
+                                                      </GlassCard>
+                                                    )
+                                                  )}
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+
+                                          {activeTab ===
+                                            "quizzes" && (
+                                            <div className="mt-4 space-y-3">
+                                              {showAIGenerate ===
+                                              topic.id ? (
+                                                <GlassCard
+                                                  variant="default"
+                                                  padding="md"
+                                                >
+                                                  <div className="flex items-center justify-between mb-4">
+                                                    <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                                                      <Brain className="w-5 h-5 text-primary" />
+                                                      Generate Quiz with AI
+                                                    </h4>
+
+                                                    <Button
+                                                      variant="ghost"
+                                                      size="icon"
+                                                      onClick={() => {
+                                                        setShowAIGenerate(
+                                                          null
+                                                        );
+                                                        setGeneratedQuiz(
+                                                          null
+                                                        );
+                                                      }}
+                                                    >
+                                                      <X className="w-4 h-4" />
+                                                    </Button>
+                                                  </div>
+
+                                                  {(!generatedQuiz ||
+                                                    showPreview ===
+                                                      topic.id) && (
+                                                    <form
+                                                      onSubmit={(
+                                                        e
+                                                      ) => {
+                                                        e.preventDefault();
+
+                                                        handleGenerateQuiz(
+                                                          topic.id
+                                                        );
+                                                      }}
+                                                      className="space-y-4"
+                                                    >
+                                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                        <div>
+                                                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                            Question Count
+                                                          </label>
+
+                                                          <Input
+                                                            type="number"
+                                                            min={
+                                                              1
+                                                            }
+                                                            max={
+                                                              20
+                                                            }
+                                                            value={
+                                                              aiConfig.questionCount
+                                                            }
+                                                            onChange={(
+                                                              e
+                                                            ) =>
+                                                              setAiConfig(
+                                                                (
+                                                                  prev
+                                                                ) => ({
+                                                                  ...prev,
+                                                                  questionCount:
+                                                                    parseInt(
+                                                                      e
+                                                                        .target
+                                                                        .value
+                                                                    ) ||
+                                                                    1,
+                                                                })
+                                                              )
+                                                            }
+                                                            required
+                                                          />
+                                                        </div>
+
+                                                        <div>
+                                                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                            Difficulty
+                                                          </label>
+
+                                                          <select
+                                                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                                                            value={
+                                                              aiConfig.difficulty
+                                                            }
+                                                            onChange={(
+                                                              e
+                                                            ) =>
+                                                              setAiConfig(
+                                                                (
+                                                                  prev
+                                                                ) => ({
+                                                                  ...prev,
+                                                                  difficulty:
+                                                                    e
+                                                                      .target
+                                                                      .value as
+                                                                      | "core"
+                                                                      | "extended"
+                                                                      | "mixed",
+                                                                })
                                                               )
                                                             }
                                                           >
-                                                            <RotateCcw className="w-4 h-4 mr-1" />
-                                                            Regenerate
-                                                          </Button>
+                                                            <option value="core">
+                                                              Core
+                                                              (Grades
+                                                              C-G)
+                                                            </option>
+                                                            <option value="extended">
+                                                              Extended
+                                                              (Grades
+                                                              A*-C)
+                                                            </option>
+                                                            <option value="mixed">
+                                                              Mixed
+                                                              Core &
+                                                              Extended
+                                                            </option>
+                                                          </select>
                                                         </div>
-                                                      </div>
 
-                                                      <div className="max-h-96 overflow-y-auto space-y-3">
-                                                        {generatedQuiz.questions.map(
-                                                          (
-                                                            q,
-                                                            idx
-                                                          ) => (
-                                                            <div
-                                                              key={
-                                                                idx
-                                                              }
-                                                              className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 border border-gray-200 dark:border-gray-700"
-                                                            >
-                                                              <div className="flex items-start gap-3">
-                                                                <span className="text-sm font-medium text-primary flex-shrink-0 mt-0.5">
-                                                                  Q
-                                                                  {idx +
-                                                                    1}
-                                                                </span>
+                                                        <div>
+                                                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                            Question Types
+                                                          </label>
 
-                                                                <div className="flex-1 min-w-0">
-                                                                  <p className="font-medium text-gray-900 dark:text-white mb-1">
-                                                                    {
-                                                                      q.prompt
+                                                          <div className="flex gap-2">
+                                                            {[
+                                                              "MULTIPLE_CHOICE",
+                                                              "SHORT_ANSWER",
+                                                              "ESSAY",
+                                                            ].map(
+                                                              (
+                                                                t
+                                                              ) => (
+                                                                <label
+                                                                  key={
+                                                                    t
+                                                                  }
+                                                                  className="flex items-center gap-1 text-sm cursor-pointer"
+                                                                >
+                                                                  <input
+                                                                    type="checkbox"
+                                                                    checked={aiConfig.types.includes(
+                                                                      t
+                                                                    )}
+                                                                    onChange={(
+                                                                      e
+                                                                    ) =>
+                                                                      setAiConfig(
+                                                                        (
+                                                                          prev
+                                                                        ) => ({
+                                                                          ...prev,
+                                                                          types:
+                                                                            e
+                                                                              .target
+                                                                              .checked
+                                                                              ? [
+                                                                                  ...prev.types,
+                                                                                  t,
+                                                                                ]
+                                                                              : prev.types.filter(
+                                                                                  (
+                                                                                    x
+                                                                                  ) =>
+                                                                                    x !==
+                                                                                    t
+                                                                                ),
+                                                                        })
+                                                                      )
                                                                     }
-                                                                  </p>
+                                                                    className="rounded border-gray-300 text-primary focus:ring-primary"
+                                                                  />
 
-                                                                  <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                                                                    <Badge
-                                                                      variant="outline"
-                                                                      className="text-xs capitalize"
-                                                                    >
-                                                                      {q.type
-                                                                        .toLowerCase()
-                                                                        .replace(
-                                                                          /_/g,
-                                                                          " "
-                                                                        )}
-                                                                    </Badge>
-
-                                                                    <span>
-                                                                      {
-                                                                        q.marks
-                                                                      }{" "}
-                                                                      marks
-                                                                    </span>
-
-                                                                    <span className="px-1.5 py-0.5 bg-primary/10 dark:bg-primary/20 text-primary text-xs rounded">
-                                                                      ~
-                                                                      {getEstimatedTime(
-                                                                        q.type,
-                                                                        q.marks
-                                                                      )}{" "}
-                                                                      min
-                                                                    </span>
-                                                                  </p>
-
-                                                                  {q.type ===
-                                                                    "MULTIPLE_CHOICE" &&
-                                                                    q.options && (
-                                                                      <div className="mt-2 space-y-1 ml-4">
-                                                                        {q.options.map(
-                                                                          (
-                                                                            opt: any,
-                                                                            oIdx: number
-                                                                          ) => (
-                                                                            <div
-                                                                              key={
-                                                                                oIdx
-                                                                              }
-                                                                              className="text-sm flex items-center gap-2"
-                                                                            >
-                                                                              <span
-                                                                                className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs font-medium ${
-                                                                                  opt.isCorrect
-                                                                                    ? "bg-green-100 border-green-400 text-green-700 dark:bg-green-900/30 dark:border-green-600 dark:text-green-300"
-                                                                                    : "bg-gray-100 border-gray-300 text-gray-600 dark:bg-gray-700 dark:border-gray-600"
-                                                                                }`}
-                                                                              >
-                                                                                {String.fromCharCode(
-                                                                                  65 +
-                                                                                    oIdx
-                                                                                )}
-                                                                              </span>
-
-                                                                              <span className="text-gray-700 dark:text-gray-300">
-                                                                                {
-                                                                                  opt.text
-                                                                                }
-                                                                              </span>
-                                                                            </div>
-                                                                          )
-                                                                        )}
-                                                                      </div>
-                                                                    )}
-
-                                                                  {q.explanation && (
-                                                                    <p className="mt-2 text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 p-2 rounded">
-                                                                      <strong>
-                                                                        Explanation:
-                                                                      </strong>{" "}
-                                                                      {
-                                                                        q.explanation
-                                                                      }
-                                                                    </p>
-                                                                  )}
-
-                                                                  {q.markScheme &&
-                                                                    q.type !==
-                                                                      "MULTIPLE_CHOICE" && (
-                                                                      <p className="mt-2 text-xs text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20 p-2 rounded">
-                                                                        <strong>
-                                                                          Mark
-                                                                          Scheme:
-                                                                        </strong>{" "}
-                                                                        {
-                                                                          q.markScheme
-                                                                        }
-                                                                      </p>
-                                                                    )}
-                                                                </div>
-                                                              </div>
-                                                            </div>
-                                                          )
-                                                        )}
+                                                                  <span className="capitalize">
+                                                                    {t
+                                                                      .replace(
+                                                                        /_/g,
+                                                                        " "
+                                                                      )
+                                                                      .toLowerCase()}
+                                                                  </span>
+                                                                </label>
+                                                              )
+                                                            )}
+                                                          </div>
+                                                        </div>
                                                       </div>
 
                                                       <div className="flex justify-end gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
@@ -2941,88 +3214,308 @@ export default function AdminContentPage() {
                                                             setGeneratedQuiz(
                                                               null
                                                             );
-                                                            setShowPreview(
-                                                              null
-                                                            );
                                                           }}
                                                         >
                                                           Cancel
                                                         </Button>
 
                                                         <Button
-                                                          variant="primary"
-                                                          onClick={() =>
-                                                            handleSaveGeneratedQuiz(
-                                                              topic.id
-                                                            )
+                                                          type="submit"
+                                                          loading={
+                                                            aiGenerating ===
+                                                            topic.id
                                                           }
                                                           icon={
-                                                            <Save className="w-4 h-4" />
+                                                            aiGenerating ===
+                                                            topic.id ? (
+                                                              <Loader2 className="w-4 h-4 animate-spin" />
+                                                            ) : (
+                                                              <Zap className="w-4 h-4" />
+                                                            )
                                                           }
                                                         >
-                                                          Save as Quiz
+                                                          {aiGenerating ===
+                                                          topic.id
+                                                            ? "Generating..."
+                                                            : "Generate Quiz"}
                                                         </Button>
                                                       </div>
-                                                    </div>
+                                                    </form>
                                                   )}
-                                              </GlassCard>
-                                            ) : (
-                                              <div className="space-y-3">
-                                                <GlassCard
-                                                  variant="default"
-                                                  padding="md"
-                                                >
-                                                  <div className="flex items-center justify-between mb-3">
-                                                    <h4 className="font-medium text-gray-900 dark:text-white">
-                                                      Quiz Management
-                                                    </h4>
+
+                                                  {generatedQuiz &&
+                                                    showPreview ===
+                                                      topic.id && (
+                                                      <div className="space-y-4">
+                                                        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                                                          <div className="flex items-center justify-between">
+                                                            <div>
+                                                              <p className="font-medium text-green-800 dark:text-green-200">
+                                                                Quiz Generated
+                                                                Successfully!
+                                                              </p>
+
+                                                              <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-4">
+                                                                <span>
+                                                                  {
+                                                                    generatedQuiz
+                                                                      .questions
+                                                                      .length
+                                                                  }{" "}
+                                                                  questions ·
+                                                                  ~
+                                                                  {Math.floor(
+                                                                    generatedQuiz.timeLimitSeconds /
+                                                                      60
+                                                                  )}{" "}
+                                                                  min
+                                                                </span>
+
+                                                                <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded text-xs font-medium">
+                                                                  AI Provider:{" "}
+                                                                  {generatedQuiz.meta
+                                                                    ?.provider ||
+                                                                    "Unknown"}
+                                                                </span>
+                                                              </p>
+                                                            </div>
+
+                                                            <Button
+                                                              variant="outline"
+                                                              size="sm"
+                                                              onClick={() =>
+                                                                setShowPreview(
+                                                                  null
+                                                                )
+                                                              }
+                                                            >
+                                                              <RotateCcw className="w-4 h-4 mr-1" />
+                                                              Regenerate
+                                                            </Button>
+                                                          </div>
+                                                        </div>
+
+                                                        <div className="max-h-96 overflow-y-auto space-y-3">
+                                                          {generatedQuiz.questions.map(
+                                                            (
+                                                              q,
+                                                              idx
+                                                            ) => (
+                                                              <div
+                                                                key={
+                                                                  idx
+                                                                }
+                                                                className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 border border-gray-200 dark:border-gray-700"
+                                                              >
+                                                                <div className="flex items-start gap-3">
+                                                                  <span className="text-sm font-medium text-primary flex-shrink-0 mt-0.5">
+                                                                    Q
+                                                                    {idx +
+                                                                      1}
+                                                                  </span>
+
+                                                                  <div className="flex-1 min-w-0">
+                                                                    <p className="font-medium text-gray-900 dark:text-white mb-1">
+                                                                      {
+                                                                        q.prompt
+                                                                      }
+                                                                    </p>
+
+                                                                    <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                                                                      <Badge
+                                                                        variant="outline"
+                                                                        className="text-xs capitalize"
+                                                                      >
+                                                                        {q.type
+                                                                          .toLowerCase()
+                                                                          .replace(
+                                                                            /_/g,
+                                                                            " "
+                                                                          )}
+                                                                      </Badge>
+
+                                                                      <span>
+                                                                        {
+                                                                          q.marks
+                                                                        }{" "}
+                                                                        marks
+                                                                      </span>
+
+                                                                      <span className="px-1.5 py-0.5 bg-primary/10 dark:bg-primary/20 text-primary text-xs rounded">
+                                                                        ~
+                                                                        {getEstimatedTime(
+                                                                          q.type,
+                                                                          q.marks
+                                                                        )}{" "}
+                                                                        min
+                                                                      </span>
+                                                                    </p>
+
+                                                                    {q.type ===
+                                                                      "MULTIPLE_CHOICE" &&
+                                                                      q.options && (
+                                                                        <div className="mt-2 space-y-1 ml-4">
+                                                                          {q.options.map(
+                                                                            (
+                                                                              opt: any,
+                                                                              oIdx: number
+                                                                            ) => (
+                                                                              <div
+                                                                                key={
+                                                                                  oIdx
+                                                                                }
+                                                                                className="text-sm flex items-center gap-2"
+                                                                              >
+                                                                                <span
+                                                                                  className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs font-medium ${
+                                                                                    opt.isCorrect
+                                                                                      ? "bg-green-100 border-green-400 text-green-700 dark:bg-green-900/30 dark:border-green-600 dark:text-green-300"
+                                                                                      : "bg-gray-100 border-gray-300 text-gray-600 dark:bg-gray-700 dark:border-gray-600"
+                                                                                  }`}
+                                                                                >
+                                                                                  {String.fromCharCode(
+                                                                                    65 +
+                                                                                      oIdx
+                                                                                  )}
+                                                                                </span>
+
+                                                                                <span className="text-gray-700 dark:text-gray-300">
+                                                                                  {
+                                                                                    opt.text
+                                                                                  }
+                                                                                </span>
+                                                                              </div>
+                                                                            )
+                                                                          )}
+                                                                        </div>
+                                                                      )}
+
+                                                                    {q.explanation && (
+                                                                      <p className="mt-2 text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 p-2 rounded">
+                                                                        <strong>
+                                                                          Explanation:
+                                                                        </strong>{" "}
+                                                                        {
+                                                                          q.explanation
+                                                                        }
+                                                                      </p>
+                                                                    )}
+
+                                                                    {q.markScheme &&
+                                                                      q.type !==
+                                                                        "MULTIPLE_CHOICE" && (
+                                                                        <p className="mt-2 text-xs text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20 p-2 rounded">
+                                                                          <strong>
+                                                                            Mark
+                                                                            Scheme:
+                                                                          </strong>{" "}
+                                                                          {
+                                                                            q.markScheme
+                                                                          }
+                                                                        </p>
+                                                                      )}
+                                                                  </div>
+                                                                </div>
+                                                              </div>
+                                                            )
+                                                          )}
+                                                        </div>
+
+                                                        <div className="flex justify-end gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                                          <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            onClick={() => {
+                                                              setShowAIGenerate(
+                                                                null
+                                                              );
+                                                              setGeneratedQuiz(
+                                                                null
+                                                              );
+                                                              setShowPreview(
+                                                                null
+                                                              );
+                                                            }}
+                                                          >
+                                                            Cancel
+                                                          </Button>
+
+                                                          <Button
+                                                            variant="primary"
+                                                            onClick={() =>
+                                                              handleSaveGeneratedQuiz(
+                                                                topic.id
+                                                              )
+                                                            }
+                                                            icon={
+                                                              <Save className="w-4 h-4" />
+                                                            }
+                                                          >
+                                                            Save as Quiz
+                                                          </Button>
+                                                        </div>
+                                                      </div>
+                                                    )}
+                                                </GlassCard>
+                                              ) : (
+                                                <div className="space-y-3">
+                                                  <GlassCard
+                                                    variant="default"
+                                                    padding="md"
+                                                  >
+                                                    <div className="flex items-center justify-between mb-3">
+                                                      <h4 className="font-medium text-gray-900 dark:text-white">
+                                                        Quiz Management
+                                                      </h4>
+
+                                                      <Button
+                                                        variant="primary"
+                                                        icon={
+                                                          <Zap className="w-4 h-4" />
+                                                        }
+                                                        onClick={() =>
+                                                          setShowAIGenerate(
+                                                            topic.id
+                                                          )
+                                                        }
+                                                      >
+                                                        <Brain className="w-4 h-4 mr-1" />
+                                                        Generate with AI
+                                                      </Button>
+                                                    </div>
+
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                                                      Create IGCSE-aligned
+                                                      quizzes using AI
+                                                      (Gemini/DeepSeek).
+                                                      Select topic,
+                                                      question types,
+                                                      and difficulty.
+                                                    </p>
 
                                                     <Button
-                                                      variant="primary"
+                                                      variant="outline"
                                                       icon={
-                                                        <Zap className="w-4 h-4" />
+                                                        <FileText className="w-4 h-4" />
                                                       }
-                                                      onClick={() =>
-                                                        setShowAIGenerate(
-                                                          topic.id
-                                                        )
-                                                      }
+                                                      disabled
                                                     >
-                                                      <Brain className="w-4 h-4 mr-1" />
-                                                      Generate with AI
+                                                      Create Quiz
+                                                      Manually
                                                     </Button>
-                                                  </div>
-
-                                                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                                                    Create IGCSE-aligned
-                                                    quizzes using AI
-                                                    (Gemini/DeepSeek).
-                                                    Select topic, question
-                                                    types, and difficulty.
-                                                  </p>
-
-                                                  <Button
-                                                    variant="outline"
-                                                    icon={
-                                                      <FileText className="w-4 h-4" />
-                                                    }
-                                                    disabled
-                                                  >
-                                                    Create Quiz Manually
-                                                  </Button>
-                                                </GlassCard>
-                                              </div>
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
+                                                  </GlassCard>
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
                                 )}
                               </div>
                             ))}
 
-                            {/* Add Topic Form */}
                             <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
                               <form
                                 key={`topic-form-${unit.Topic.length}`}
@@ -3042,8 +3535,11 @@ export default function AdminContentPage() {
                                     );
 
                                   if (
-                                    isNaN(orderVal) ||
-                                    orderVal < 0
+                                    isNaN(
+                                      orderVal
+                                    ) ||
+                                    orderVal <
+                                      0
                                   ) {
                                     showToast(
                                       "error",
@@ -3061,16 +3557,16 @@ export default function AdminContentPage() {
                                     orderVal
                                   );
 
-                                  // Only clear the name field; leave the order
-                                  // input intact so the next submission still
-                                  // carries a valid orderIndex.
                                   const nameInput =
                                     e.currentTarget.querySelector<HTMLInputElement>(
                                       '[name="name"]'
                                     );
 
-                                  if (nameInput) {
-                                    nameInput.value = "";
+                                  if (
+                                    nameInput
+                                  ) {
+                                    nameInput.value =
+                                      "";
                                   }
                                 }}
                                 className="flex items-center gap-2"
@@ -3103,86 +3599,11 @@ export default function AdminContentPage() {
                             </div>
                           </div>
                         )}
-                      </div>
-                    ))}
-
-                    {/* Add Unit Form */}
-                    <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-
-                          const formData =
-                            new FormData(
-                              e.currentTarget
-                            );
-
-                          const orderVal =
-                            parseInt(
-                              formData.get(
-                                "orderIndex"
-                              ) as string
-                            );
-
-                          if (
-                            isNaN(orderVal) ||
-                            orderVal < 0
-                          ) {
-                            showToast(
-                              "error",
-                              "Order must be a valid non-negative number"
-                            );
-                            return;
-                          }
-
-                          handleCreateUnit(
-                            subject.id,
-                            formData.get(
-                              "name"
-                            ) as string,
-                            orderVal
-                          );
-
-                          // Only clear the name field; leave
-                          // the order input intact.
-                          const nameInput =
-                            e.currentTarget.querySelector<HTMLInputElement>(
-                              '[name="name"]'
-                            );
-
-                          if (nameInput) {
-                            nameInput.value = "";
-                          }
-                        }}
-                        className="flex items-center gap-2"
-                      >
-                        <Input
-                          placeholder="Unit name"
-                          name="name"
-                          required
-                          className="flex-1"
-                        />
-
-                        <Input
-                          placeholder="Order"
-                          name="orderIndex"
-                          type="number"
-                          required
-                          className="w-20"
-                          defaultValue={
-                            subject.Unit.length
-                          }
-                        />
-
-                        <Button type="submit" size="sm">
-                          <Plus className="w-4 h-4" />
-                        </Button>
-                      </form>
                     </div>
-                  </div>
-                )}
-              </GlassCard>
-            ))}
+                  )}
+                </GlassCard>
+              )
+            )}
           </div>
         )}
       </div>

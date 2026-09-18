@@ -4,9 +4,9 @@ import { createClient } from "@supabase/supabase-js";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 const SUPABASE_BUCKET = "new-files";
-const FALLBACK_CONTENT_TYPE = "application/octet-stream";
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
-function requiredEnv(name: string): string {
+function getRequiredEnv(name: string): string {
   const value = process.env[name];
 
   if (!value) {
@@ -29,7 +29,7 @@ function sanitizeFileName(fileName: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    // Keep the existing teacher-only authorization.
+    // Only teachers can create upload URLs.
     const session = await getServerSession(authOptions);
 
     if (!session?.user || session.user.role !== "TEACHER") {
@@ -39,7 +39,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabaseUrl = requiredEnv("vv_SUPABASE_URL");
+    const body = await request.json().catch(() => null);
+
+    if (!body || typeof body !== "object") {
+      return NextResponse.json(
+        { error: "Invalid request body" },
+        { status: 400 }
+      );
+    }
+
+    const fileName =
+      typeof body.fileName === "string"
+        ? body.fileName.trim()
+        : "";
+
+    const contentType =
+      typeof body.contentType === "string" &&
+      body.contentType.trim()
+        ? body.contentType.trim()
+        : "application/octet-stream";
+
+    const fileSize =
+      typeof body.fileSize === "number" &&
+      Number.isFinite(body.fileSize)
+        ? body.fileSize
+        : null;
+
+    if (!fileName) {
+      return NextResponse.json(
+        { error: "fileName is required" },
+        { status: 400 }
+      );
+    }
+
+    if (fileSize !== null) {
+      if (fileSize <= 0) {
+        return NextResponse.json(
+          { error: "Invalid file size" },
+          { status: 400 }
+        );
+      }
+
+      if (fileSize > MAX_FILE_SIZE) {
+        return NextResponse.json(
+          {
+            error:
+              "File is too large. Maximum allowed size is 100 MB.",
+          },
+          { status: 413 }
+        );
+      }
+    }
+
+    const supabaseUrl = getRequiredEnv("vv_SUPABASE_URL");
 
     // Server-side secret only.
     const supabaseSecret =
@@ -52,23 +104,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const formData = await request.formData();
-    const fileValue = formData.get("file");
+    const safeFileName = sanitizeFileName(fileName);
 
-    if (!(fileValue instanceof File)) {
-      return NextResponse.json(
-        { error: "No file provided" },
-        { status: 400 }
-      );
-    }
-
-    const file = fileValue;
-    const contentType =
-      file.type || FALLBACK_CONTENT_TYPE;
-
-    const safeFileName = sanitizeFileName(file.name);
-
-    // Every new file gets its own unique path.
+    // Every upload gets a unique path so files never overwrite
+    // one another accidentally.
     const filePath =
       `resources/${crypto.randomUUID()}-${safeFileName}`;
 
@@ -83,57 +122,52 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    const bytes = Buffer.from(await file.arrayBuffer());
-
+    // Create a temporary signed upload URL.
     const { data, error } = await supabase.storage
       .from(SUPABASE_BUCKET)
-      .upload(filePath, bytes, {
-        contentType,
-        cacheControl: "3600",
-        upsert: false,
-      });
+      .createSignedUploadUrl(filePath);
 
     if (error || !data) {
-      console.error("Supabase Storage upload error:", error);
+      console.error(
+        "Supabase signed upload URL error:",
+        error
+      );
 
       return NextResponse.json(
         {
           error:
             error?.message ||
-            "Failed to upload file to Supabase Storage",
+            "Failed to create Supabase upload URL",
         },
         { status: 500 }
       );
     }
 
+    // This URL is used after the upload finishes as the resource fileKey.
     const { data: publicUrlData } = supabase.storage
       .from(SUPABASE_BUCKET)
-      .getPublicUrl(data.path);
-
-    const publicUrl = publicUrlData.publicUrl;
-
-    console.log(
-      `Upload complete (Supabase): ${file.name} ` +
-      `(${(file.size / 1024 / 1024).toFixed(1)}MB) → ${publicUrl}`
-    );
+      .getPublicUrl(filePath);
 
     return NextResponse.json({
-      fileKey: publicUrl,
-      fileType: contentType,
-      fileSize: file.size,
-      url: publicUrl,
-      pathname: data.path,
+      success: true,
       storage: "supabase",
+      bucket: SUPABASE_BUCKET,
+      path: data.path,
+      token: data.token,
+      signedUrl: data.signedUrl,
+      publicUrl: publicUrlData.publicUrl,
+      contentType,
+      fileName: safeFileName,
     });
   } catch (error) {
-    console.error("File upload error:", error);
+    console.error("Upload route error:", error);
 
     return NextResponse.json(
       {
         error:
           error instanceof Error
             ? error.message
-            : "Failed to upload file",
+            : "Failed to prepare upload",
       },
       { status: 500 }
     );

@@ -851,6 +851,7 @@ export default function AdminContentPage() {
             "application/octet-stream",
           fileSize: file.size,
         }),
+        cache: "no-store",
       }
     );
 
@@ -868,7 +869,8 @@ export default function AdminContentPage() {
     if (
       !data?.signedUrl ||
       !data?.publicUrl ||
-      !data?.path
+      !data?.path ||
+      !data?.token
     ) {
       throw new Error(
         "Supabase returned an invalid upload response"
@@ -884,17 +886,6 @@ export default function AdminContentPage() {
           "PUT",
           data.signedUrl,
           true
-        );
-
-        xhr.setRequestHeader(
-          "Content-Type",
-          file.type ||
-            "application/octet-stream"
-        );
-
-        xhr.setRequestHeader(
-          "Cache-Control",
-          "max-age=3600"
         );
 
         xhr.upload.addEventListener(
@@ -977,7 +968,11 @@ export default function AdminContentPage() {
           }
         );
 
-        xhr.send(file);
+        const formData = new FormData();
+        formData.append("cacheControl", "3600");
+        formData.append("", file);
+
+        xhr.send(formData);
       }
     );
 
@@ -2430,11 +2425,7 @@ export default function AdminContentPage() {
                                                     )
                                                   )}
                                                 </div>
-                                              ) : (
-                                                topicResources[
-                                                  topic.id
-                                                ] || []
-                                              ).length ===
+                                              ) : (topicResources[topic.id] || []).length ===
                                                 0 ? (
                                                 <GlassCard
                                                   variant="default"
@@ -2870,11 +2861,7 @@ export default function AdminContentPage() {
                                                     )
                                                   )}
                                                 </div>
-                                              ) : (
-                                                topicRecordings[
-                                                  topic.id
-                                                ] || []
-                                              ).length ===
+                                              ) : (topicRecordings[topic.id] || []).length ===
                                                 0 ? (
                                                 <GlassCard
                                                   variant="default"
@@ -3513,8 +3500,6 @@ export default function AdminContentPage() {
                                     </div>
                                   )
                                 )}
-                              </div>
-                            ))}
 
                             <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
                               <form
@@ -3597,8 +3582,73 @@ export default function AdminContentPage() {
                                 </Button>
                               </form>
                             </div>
+                              </div>
+                            )}
                           </div>
-                        )}
+                        ))}
+
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+
+                          const formData = new FormData(
+                            e.currentTarget
+                          );
+
+                          const orderVal = parseInt(
+                            formData.get("orderIndex") as string
+                          );
+
+                          if (
+                            isNaN(orderVal) ||
+                            orderVal < 0
+                          ) {
+                            showToast(
+                              "error",
+                              "Order must be a valid non-negative number"
+                            );
+                            return;
+                          }
+
+                          handleCreateUnit(
+                            subject.id,
+                            formData.get("name") as string,
+                            orderVal
+                          );
+
+                          const nameInput =
+                            e.currentTarget.querySelector<HTMLInputElement>(
+                              '[name="name"]'
+                            );
+
+                          if (nameInput) {
+                            nameInput.value = "";
+                          }
+                        }}
+                        className="flex items-center gap-2"
+                      >
+                        <Input
+                          placeholder="Unit name"
+                          name="name"
+                          required
+                          className="flex-1"
+                        />
+
+                        <Input
+                          placeholder="Order"
+                          name="orderIndex"
+                          type="number"
+                          required
+                          className="w-20"
+                          defaultValue={subject.Unit.length}
+                        />
+
+                        <Button type="submit" size="sm">
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      </form>
+                    </div>
                     </div>
                   )}
                 </GlassCard>

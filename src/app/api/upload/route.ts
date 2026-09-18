@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { createClient } from "@supabase/supabase-js";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 const SUPABASE_BUCKET = "new-files";
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
-function getRequiredEnv(name: string): string {
+function requiredEnv(name: string): string {
   const value = process.env[name];
 
   if (!value) {
@@ -29,7 +28,7 @@ function sanitizeFileName(fileName: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    // Only teachers can create upload URLs.
+    // Existing authentication behavior: only teachers can upload.
     const session = await getServerSession(authOptions);
 
     if (!session?.user || session.user.role !== "TEACHER") {
@@ -91,9 +90,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const supabaseUrl = getRequiredEnv("vv_SUPABASE_URL");
+    const supabaseUrl = requiredEnv("vv_SUPABASE_URL");
 
-    // Server-side secret only.
+    // Server-side only.
     const supabaseSecret =
       process.env.vv_SUPABASE_SECRET_KEY ||
       process.env.vv_SUPABASE_SERVICE_ROLE_KEY;
@@ -106,56 +105,108 @@ export async function POST(request: NextRequest) {
 
     const safeFileName = sanitizeFileName(fileName);
 
-    // Every upload gets a unique path so files never overwrite
-    // one another accidentally.
+    // Unique path for every upload.
     const filePath =
       `resources/${crypto.randomUUID()}-${safeFileName}`;
 
-    const supabase = createClient(
-      supabaseUrl,
-      supabaseSecret,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    /*
+     * Supabase Storage API:
+     * POST /storage/v1/object/upload/sign/{bucket}/{path}
+     *
+     * This is the same Storage endpoint used by
+     * @supabase/supabase-js internally.
+     */
+    const storageBaseUrl =
+      `${supabaseUrl.replace(/\/+$/, "")}/storage/v1`;
 
-    // Create a temporary signed upload URL.
-    const { data, error } = await supabase.storage
-      .from(SUPABASE_BUCKET)
-      .createSignedUploadUrl(filePath);
+    const signUrl =
+      `${storageBaseUrl}/object/upload/sign/` +
+      `${SUPABASE_BUCKET}/${filePath}`;
 
-    if (error || !data) {
+    const signResponse = await fetch(signUrl, {
+      method: "POST",
+      headers: {
+        apikey: supabaseSecret,
+        Authorization: `Bearer ${supabaseSecret}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+      cache: "no-store",
+    });
+
+    const signData = await signResponse
+      .json()
+      .catch(() => null);
+
+    if (!signResponse.ok) {
       console.error(
-        "Supabase signed upload URL error:",
-        error
+        "Supabase signed upload error:",
+        signData
       );
 
       return NextResponse.json(
         {
           error:
-            error?.message ||
+            signData?.message ||
+            signData?.error ||
             "Failed to create Supabase upload URL",
         },
         { status: 500 }
       );
     }
 
-    // This URL is used after the upload finishes as the resource fileKey.
-    const { data: publicUrlData } = supabase.storage
-      .from(SUPABASE_BUCKET)
-      .getPublicUrl(filePath);
+    if (!signData?.url) {
+      console.error(
+        "Supabase did not return a signed upload URL:",
+        signData
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            "Supabase did not return a signed upload URL",
+        },
+        { status: 500 }
+      );
+    }
+
+    // Supabase returns a relative URL such as:
+    // /object/upload/sign/new-files/resources/...?token=...
+    const signedUrl = signData.url.startsWith("http")
+      ? signData.url
+      : `${storageBaseUrl}${signData.url}`;
+
+    const signedUrlObject = new URL(signedUrl);
+    const token =
+      signedUrlObject.searchParams.get("token");
+
+    if (!token) {
+      console.error(
+        "No token found in Supabase signed URL"
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            "Supabase signed upload URL did not contain a token",
+        },
+        { status: 500 }
+      );
+    }
+
+    // Public URL for the final resource record.
+    const publicUrl =
+      `${storageBaseUrl}/object/public/` +
+      `${SUPABASE_BUCKET}/${filePath}`;
 
     return NextResponse.json({
       success: true,
       storage: "supabase",
       bucket: SUPABASE_BUCKET,
-      path: data.path,
-      token: data.token,
-      signedUrl: data.signedUrl,
-      publicUrl: publicUrlData.publicUrl,
+      path: filePath,
+      token,
+      signedUrl,
+      publicUrl,
       contentType,
       fileName: safeFileName,
     });

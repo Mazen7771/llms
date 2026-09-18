@@ -1,76 +1,141 @@
 import { NextRequest, NextResponse } from "next/server";
-import { put } from "@vercel/blob";
 import { getServerSession } from "next-auth";
+import { createClient } from "@supabase/supabase-js";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { prisma } from "@/lib/prisma";
 
+const SUPABASE_BUCKET = "new-files";
 const FALLBACK_CONTENT_TYPE = "application/octet-stream";
+
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+
+  if (!value) {
+    throw new Error(`Missing environment variable: ${name}`);
+  }
+
+  return value;
+}
+
+function sanitizeFileName(fileName: string): string {
+  const cleaned = fileName
+    .normalize("NFKC")
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 180);
+
+  return cleaned || "file";
+}
 
 export async function POST(request: NextRequest) {
   try {
+    // Keep the existing teacher-only authorization.
     const session = await getServerSession(authOptions);
+
     if (!session?.user || session.user.role !== "TEACHER") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const supabaseUrl = requiredEnv("vv_SUPABASE_URL");
+
+    // Server-side secret only.
+    const supabaseSecret =
+      process.env.vv_SUPABASE_SECRET_KEY ||
+      process.env.vv_SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseSecret) {
+      throw new Error(
+        "Missing vv_SUPABASE_SECRET_KEY or vv_SUPABASE_SERVICE_ROLE_KEY"
+      );
     }
 
     const formData = await request.formData();
-    const file = formData.get("file") as File | null;
+    const fileValue = formData.get("file");
 
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    if (!(fileValue instanceof File)) {
+      return NextResponse.json(
+        { error: "No file provided" },
+        { status: 400 }
+      );
     }
 
-    // NOTE: The client (page.tsx) now uploads ALL files directly to Vercel Blob
-    // via a scoped client token (multipart). This server endpoint is only reached
-    // for small files (<=2MB) when the Blob token is unavailable, OR if someone
-    // calls it directly. The old chunked path (key/index/total/finalize) that
-    // wrote to Neon's UploadChunk table has been REMOVED — it was a capacity
-    // bomb for the free-tier DB and is no longer used.
-    return await handleWholeFile(file);
-  } catch (error) {
-    console.error("File upload error:", error);
-    return NextResponse.json({ error: "Failed to upload file" }, { status: 500 });
-  }
-}
+    const file = fileValue;
+    const contentType =
+      file.type || FALLBACK_CONTENT_TYPE;
 
-async function handleWholeFile(file: File): Promise<NextResponse> {
-  const contentType = file.type || FALLBACK_CONTENT_TYPE;
+    const safeFileName = sanitizeFileName(file.name);
 
-  // Prefer Vercel Blob when it's configured on the deployment; otherwise
-  // store the raw bytes in the UploadedFile table so uploads work even
-  // without a BLOB_READ_WRITE_TOKEN (Blob not attached to the project).
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
-    const blob = await put(file.name, file, {
-      access: "public",
-      addRandomSuffix: true,
-    });
+    // Every new file gets its own unique path.
+    const filePath =
+      `resources/${crypto.randomUUID()}-${safeFileName}`;
 
-    console.log(`Upload complete (blob): ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB) → ${blob.url}`);
+    const supabase = createClient(
+      supabaseUrl,
+      supabaseSecret,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
+
+    const bytes = Buffer.from(await file.arrayBuffer());
+
+    const { data, error } = await supabase.storage
+      .from(SUPABASE_BUCKET)
+      .upload(filePath, bytes, {
+        contentType,
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+    if (error || !data) {
+      console.error("Supabase Storage upload error:", error);
+
+      return NextResponse.json(
+        {
+          error:
+            error?.message ||
+            "Failed to upload file to Supabase Storage",
+        },
+        { status: 500 }
+      );
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from(SUPABASE_BUCKET)
+      .getPublicUrl(data.path);
+
+    const publicUrl = publicUrlData.publicUrl;
+
+    console.log(
+      `Upload complete (Supabase): ${file.name} ` +
+      `(${(file.size / 1024 / 1024).toFixed(1)}MB) → ${publicUrl}`
+    );
 
     return NextResponse.json({
-      fileKey: blob.url, // Using the blob URL as fileKey
+      fileKey: publicUrl,
       fileType: contentType,
       fileSize: file.size,
-      url: blob.url,
-      pathname: blob.pathname,
+      url: publicUrl,
+      pathname: data.path,
+      storage: "supabase",
     });
+  } catch (error) {
+    console.error("File upload error:", error);
+
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to upload file",
+      },
+      { status: 500 }
+    );
   }
-
-  // Fallback: persist the bytes in the DB and return the row key as fileKey.
-  // /api/files/[...path] serves these bytes back for the key.
-  const bytes = Buffer.from(await file.arrayBuffer());
-  const key = crypto.randomUUID();
-  await prisma.uploadedFile.create({
-    data: { key: key, data: bytes, contentType: contentType, size: bytes.length },
-  });
-
-  console.log(`Upload complete (db): ${file.name} (${(bytes.length / 1024 / 1024).toFixed(1)}MB) → ${key}`);
-
-  return NextResponse.json({
-    fileKey: key,
-    fileType: contentType,
-    fileSize: bytes.length,
-    url: key,
-    pathname: file.name,
-  });
 }

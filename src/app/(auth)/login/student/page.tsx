@@ -1,7 +1,7 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
-import { useState, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
 import { getCsrfToken } from "next-auth/react";
 import Link from "next/link";
 import { PremiumButton } from "@/components/ui/PremiumButton";
@@ -63,9 +63,26 @@ const EyeOffIcon = ({ className = "" }) => (
 
 function StudentLoginPageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
   const urlError = searchParams.get("error");
   const registered = searchParams.get("registered");
+
+  // NextAuth (v4) only supports one global `pages.signIn` / `pages.error`
+  // config, which is set to this page. That means a failed TEACHER login
+  // (POST to /api/auth/callback/teacher) also gets bounced here instead of
+  // back to /login/teacher, even though the credentials, session, and
+  // callbackUrl (preserved via NextAuth's callbackUrl cookie) all belong to
+  // the teacher flow. Detect that case from the preserved callbackUrl and
+  // forward the user to the correct page instead of showing them the
+  // student form with a confusing "invalid credentials" message.
+  const isMisroutedTeacherAttempt = callbackUrl.startsWith("/admin");
+
+  useEffect(() => {
+    if (isMisroutedTeacherAttempt) {
+      router.replace(`/login/teacher?${searchParams.toString()}`);
+    }
+  }, [isMisroutedTeacherAttempt, router, searchParams]);
 
   const [studentId, setStudentId] = useState("");
   const [password, setPassword] = useState("");
@@ -126,6 +143,15 @@ function StudentLoginPageContent() {
       setIsLoading(false);
     }
   };
+
+  if (isMisroutedTeacherAttempt) {
+    // Avoid flashing the student form before the redirect above completes.
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-[#0a2b28] to-slate-950" aria-busy="true">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70" aria-hidden="true" />
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden bg-gradient-to-br from-slate-950 via-[#0a2b28] to-slate-950">

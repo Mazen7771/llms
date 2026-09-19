@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { getCsrfToken } from "next-auth/react";
 import Link from "next/link";
 import { PremiumButton } from "@/components/ui/PremiumButton";
@@ -69,6 +69,15 @@ function TeacherLoginPageContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
+  // See the matching comment in /login/student/page.tsx: this primes the
+  // csrf-token cookie on page load so a fast first submit doesn't race
+  // the cookie being set and get rejected as a CSRF failure, which
+  // NextAuth then bounces to pages.signIn ("/login/student") - i.e. a
+  // teacher login that looks like it silently redirected somewhere else.
+  useEffect(() => {
+    getCsrfToken();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -84,6 +84,19 @@ function StudentLoginPageContent() {
     }
   }, [isMisroutedTeacherAttempt, router, searchParams]);
 
+  // Fetch the CSRF token as soon as the page loads instead of waiting until
+  // submit. getCsrfToken() both reads and *sets* the csrf-token cookie via
+  // its response; calling it only at submit time (as handleSubmit still
+  // does, to guarantee freshness) leaves a narrow window on a fast first
+  // submit where the browser hasn't finished applying that cookie before
+  // the POST goes out, which NextAuth then rejects as a CSRF failure and
+  // redirects back to this same sign-in page - looking exactly like a
+  // login that silently failed. Priming it here removes that race for the
+  // common case; handleSubmit's own fetch is what actually guarantees it.
+  useEffect(() => {
+    getCsrfToken();
+  }, []);
+
   const [studentId, setStudentId] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);

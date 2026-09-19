@@ -1,0 +1,85 @@
+name: Migrate database to new Neon project
+
+# Manual only - never runs on push/PR. Trigger it from the Actions tab
+# when you're ready (see the "How to use this" comment block below).
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type YES to confirm you want to copy OLD_DATABASE_URL into NEW_DATABASE_URL (this overwrites anything already in the new database)'
+        required: true
+        default: 'no'
+
+# ---------------------------------------------------------------------------
+# How to use this
+# ---------------------------------------------------------------------------
+# 1. In this repo on GitHub: Settings -> Secrets and variables -> Actions.
+# 2. Add two "Repository secrets":
+#      OLD_DATABASE_URL  = the connection string your app currently uses
+#                           (the one that's been hitting the quota limit)
+#      NEW_DATABASE_URL  = the connection string you just created
+#    Use the "...sslmode=require" (pooled) connection string Neon gives you
+#    for each project - the one with "-pooler" in the hostname.
+# 3. Only do this once the OLD database is reachable again (quota reset, or
+#    briefly upgraded) - if it's still over quota, this job will fail at
+#    the "Dump" step with the same error you've already seen.
+# 4. Go to this repo's "Actions" tab -> "Migrate database to new Neon
+#    project" -> "Run workflow" -> type YES in the confirm box -> Run.
+# 5. Watch the job. If it finishes green, the new database now has an exact
+#    copy of everything from the old one (accounts, subjects, units,
+#    topics, resource records - everything).
+# 6. Only after that job is green: update DATABASE_URL in Vercel's project
+#    settings to NEW_DATABASE_URL's value, and redeploy.
+# ---------------------------------------------------------------------------
+
+jobs:
+  migrate:
+    if: github.event.inputs.confirm == 'YES'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install PostgreSQL client tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Dump the old database (schema + data)
+        env:
+          OLD_DATABASE_URL: ${{ secrets.OLD_DATABASE_URL }}
+        run: |
+          if [ -z "$OLD_DATABASE_URL" ]; then
+            echo "OLD_DATABASE_URL secret is not set. Add it under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          pg_dump "$OLD_DATABASE_URL" \
+            --no-owner \
+            --no-privileges \
+            --format=custom \
+            --file=old_database.dump
+          echo "Dump size:"
+          ls -lh old_database.dump
+
+      - name: Restore into the new database
+        env:
+          NEW_DATABASE_URL: ${{ secrets.NEW_DATABASE_URL }}
+        run: |
+          if [ -z "$NEW_DATABASE_URL" ]; then
+            echo "NEW_DATABASE_URL secret is not set. Add it under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          pg_restore \
+            --no-owner \
+            --no-privileges \
+            --clean \
+            --if-exists \
+            --dbname="$NEW_DATABASE_URL" \
+            old_database.dump
+
+      - name: Verify row counts match
+        env:
+          OLD_DATABASE_URL: ${{ secrets.OLD_DATABASE_URL }}
+          NEW_DATABASE_URL: ${{ secrets.NEW_DATABASE_URL }}
+        run: |
+          echo "Row counts per table (old vs new) - check these match:"
+          for TABLE in $(psql "$OLD_DATABASE_URL" -Atc "SELECT tablename FROM pg_tables WHERE schemaname='public';"); do
+            OLD_COUNT=$(psql "$OLD_DATABASE_URL" -Atc "SELECT COUNT(*) FROM \"$TABLE\";")
+            NEW_COUNT=$(psql "$NEW_DATABASE_URL" -Atc "SELECT COUNT(*) FROM \"$TABLE\";" 2>/dev/null || echo "MISSING")
+            echo "  $TABLE: old=$OLD_COUNT new=$NEW_COUNT"
+          done

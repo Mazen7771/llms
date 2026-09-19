@@ -142,7 +142,11 @@ async function main() {
 
 main()
   .catch((e) => {
+    const message = e && e.message ? e.message : String(e);
     console.error("Seed failed:", e);
+    // Also emit as a workflow error annotation (retrievable via the
+    // Checks API) since raw job logs aren't always easy to fetch.
+    console.log(`::error::SEED_FAILED: ${message.replace(/\n/g, " | ")}`);
     process.exit(1);
   })
   .finally(async () => {

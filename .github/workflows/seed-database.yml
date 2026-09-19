@@ -47,6 +47,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate Prisma Client
+        env:
+          DATABASE_URL: ${{ secrets.NEW_DATABASE_URL }}
+        run: npx prisma generate
+
       - name: Apply database schema (prisma migrate deploy)
         env:
           DATABASE_URL: ${{ secrets.NEW_DATABASE_URL }}

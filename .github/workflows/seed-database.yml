@@ -1,0 +1,67 @@
+name: Seed new database with existing credentials
+
+# Manual only - never runs on push/PR.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type YES to set up the schema and seed NEW_DATABASE_URL with the given credentials'
+        required: true
+        default: 'no'
+
+# ---------------------------------------------------------------------------
+# How to use this
+# ---------------------------------------------------------------------------
+# 1. In this repo on GitHub: Settings -> Secrets and variables -> Actions.
+# 2. Add these "Repository secrets":
+#      NEW_DATABASE_URL      = the new Neon database's pooled connection
+#                              string (the one with "-pooler" in it)
+#      ADMIN_STUDENT_ID      = 0
+#      ADMIN_PASSWORD        = the password from ADMIN_CREDENTIALS.txt
+#      ADMIN_NAME            = Miss Sulafa   (or whatever name you want)
+#      STUDENT_CREDENTIALS_CSV = the ENTIRE contents of
+#                              STUDENT_CREDENTIALS.csv, including its
+#                              header line, pasted as-is
+# 3. Go to this repo's "Actions" tab -> "Seed new database with existing
+#    credentials" -> "Run workflow" -> type YES in the confirm box -> Run.
+# 4. Watch the job. If it finishes green, the new database now has all
+#    tables created AND the admin + 300 student accounts ready to log in
+#    with the exact same IDs and passwords already handed out.
+# 5. Only after that job is green: update DATABASE_URL in Vercel's project
+#    settings to NEW_DATABASE_URL's value, and redeploy.
+# ---------------------------------------------------------------------------
+
+jobs:
+  seed:
+    if: github.event.inputs.confirm == 'YES'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply database schema (prisma migrate deploy)
+        env:
+          DATABASE_URL: ${{ secrets.NEW_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "NEW_DATABASE_URL secret is not set."
+            exit 1
+          fi
+          npx prisma migrate deploy
+
+      - name: Seed admin + student accounts
+        env:
+          DATABASE_URL: ${{ secrets.NEW_DATABASE_URL }}
+          ADMIN_STUDENT_ID: ${{ secrets.ADMIN_STUDENT_ID }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          ADMIN_NAME: ${{ secrets.ADMIN_NAME }}
+          STUDENT_CREDENTIALS_CSV: ${{ secrets.STUDENT_CREDENTIALS_CSV }}
+        run: npx tsx prisma/seed-from-credentials.ts

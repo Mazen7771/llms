@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
-import { buildPublicUrl } from "@/lib/upload";
+import { resolveResourceUrl } from "@/lib/resource-url";
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 
     const withUrls = resources.map((r) => ({
       ...r,
-      publicUrl: buildPublicUrl(r.fileKey),
+      publicUrl: resolveResourceUrl(r.fileKey),
     }));
 
     return NextResponse.json({ resources: withUrls });
@@ -169,9 +169,16 @@ export async function DELETE(request: NextRequest) {
     await prisma.resource.delete({ where: { id } });
 
     // Also remove the underlying blob so storage doesn't leak files.
+    // Only Vercel-Blob-hosted files can be removed this way - Supabase
+    // Storage files (new uploads) use a different API entirely, and
+    // calling Vercel's del() on a non-Blob URL just fails silently below,
+    // leaving the Supabase object orphaned rather than actually cleaning
+    // it up. That's a known gap (not this fix's scope), but checking the
+    // hostname here at least avoids a pointless failed call for the
+    // common case.
     try {
       const { del } = await import("@vercel/blob");
-      if (resource.fileKey?.startsWith("https://")) {
+      if (resource.fileKey?.includes(".blob.vercel-storage.com/")) {
         await del(resource.fileKey);
       }
     } catch {

@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
-import { buildPublicUrl } from "@/lib/upload";
 import { buildPlayerUrl } from "@/lib/cloudflare-stream";
+import { resolveResourceUrl } from "@/lib/resource-url";
 import { isSubjectAllowed } from "@/lib/subject-filter";
 
 export async function GET(request: NextRequest) {
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
         ...topic,
         Resource: topic.Resource.map((r) => ({
           ...r,
-          publicUrl: buildPublicUrl(r.fileKey),
+          publicUrl: resolveResourceUrl(r.fileKey),
         })),
         Recording: topic.Recording.map((rec) => ({
           ...rec,
@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
         ...t,
         Resource: t.Resource.map((r) => ({
           ...r,
-          publicUrl: buildPublicUrl(r.fileKey),
+          publicUrl: resolveResourceUrl(r.fileKey),
         })),
         Recording: t.Recording.map((rec) => ({
           ...rec,

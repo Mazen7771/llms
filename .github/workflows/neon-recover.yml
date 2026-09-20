@@ -6,6 +6,17 @@ on:
 jobs:
   recover:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: neon-copper-pillar
+            id: round-tooth-42138527
+          - name: neon-sky-horizon
+            id: delicate-lab-00072366
+          - name: neon-purple-dog
+            id: nameless-boat-11551936
+          - name: neon-bronze-saddle
+            id: muddy-recipe-75778851
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -14,4 +25,6 @@ jobs:
       - run: npm ci
       - env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ matrix.id }}
+          NEON_PROJECT_NAME: ${{ matrix.name }}
         run: node scripts/neon-recover-and-inspect.js

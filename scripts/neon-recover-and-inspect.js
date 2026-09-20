@@ -50,73 +50,40 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('::notice::Checking organizations this API key can see...');
-  const orgsRes = await neonApi('GET', '/users/me/organizations');
-  const orgs = orgsRes.json?.organizations || [];
-  console.log(
-    `::notice::ORGS: ${orgs.map((o) => `${o.name}(${o.id})`).join(', ') || 'none'} (status ${orgsRes.status})`
+  const projectId = process.env.NEON_PROJECT_ID;
+  const projectName = process.env.NEON_PROJECT_NAME || projectId;
+  if (!projectId) {
+    console.log('::error::NEON_PROJECT_ID is not set.');
+    process.exit(1);
+  }
+
+  console.log(`::notice::Recovering ${projectName} (${projectId})...`);
+  const recoverRes = await neonApi('POST', `/projects/${projectId}/recover`);
+  if (recoverRes.status >= 200 && recoverRes.status < 300) {
+    console.log(`::notice::Recovered ${projectName}`);
+  } else {
+    console.log(`::error::RECOVER_FAILED for ${projectName}: HTTP ${recoverRes.status} ${JSON.stringify(recoverRes.json)}`);
+    return;
+  }
+
+  const connRes = await neonApi(
+    'GET',
+    `/projects/${projectId}/connection_uri?database_name=neondb&role_name=neondb_owner`
   );
-
-  // Check personal account (no org_id) AND every organization found, since
-  // Vercel's Neon integration creates projects inside a separate
-  // "Vercel: <team>" organization rather than the personal account.
-  const scopesToCheck = [{ label: 'personal', orgId: null }, ...orgs.map((o) => ({ label: o.name, orgId: o.id }))];
-
-  let allProjects = [];
-  let recoverable = [];
-
-  for (const scope of scopesToCheck) {
-    const suffix = scope.orgId ? `&org_id=${scope.orgId}` : '';
-    const allRes = await neonApi('GET', `/projects?limit=100${suffix}`);
-    const projects = allRes.json?.projects || [];
-    console.log(`::notice::[${scope.label}] ALL_PROJECTS: ${projects.map((p) => `${p.name}(${p.id})`).join(', ') || 'none'} (status ${allRes.status})`);
-    allProjects = allProjects.concat(projects.map((p) => ({ ...p, _scope: scope.label, _orgId: scope.orgId })));
-
-    const recRes = await neonApi('GET', `/projects?recoverable=true&limit=100${suffix}`);
-    const recProjects = recRes.json?.projects || [];
-    console.log(`::notice::[${scope.label}] RECOVERABLE: ${recProjects.map((p) => `${p.name}(${p.id})`).join(', ') || 'none'} (status ${recRes.status})`);
-    recoverable = recoverable.concat(recProjects.map((p) => ({ ...p, _scope: scope.label, _orgId: scope.orgId })));
+  const connectionUri = connRes.json?.uri;
+  if (!connectionUri) {
+    console.log(`::error::NO_CONNECTION_URI for ${projectName}: ${JSON.stringify(connRes.json)}`);
+    return;
   }
 
-  if (recoverable.length === 0) {
-    console.log('::notice::Nothing to recover in any scope checked.');
+  const counts = {};
+  for (const table of ['Subject', 'Unit', 'Topic', 'Resource']) {
+    counts[table] = await countRows(connectionUri, table);
   }
 
-  const results = [];
-
-  for (const proj of recoverable) {
-    console.log(`::notice::Recovering ${proj.name} (${proj.id})...`);
-    const recoverRes = await neonApi('POST', `/projects/${proj.id}/recover`);
-    if (recoverRes.status >= 200 && recoverRes.status < 300) {
-      console.log(`::notice::Recovered ${proj.name}`);
-    } else {
-      console.log(`::error::RECOVER_FAILED for ${proj.name}: HTTP ${recoverRes.status} ${JSON.stringify(recoverRes.json)}`);
-      continue;
-    }
-
-    // Get a connection string for this project's default branch/db/role.
-    const connRes = await neonApi(
-      'GET',
-      `/projects/${proj.id}/connection_uri?database_name=neondb&role_name=neondb_owner`
-    );
-    const connectionUri = connRes.json?.uri;
-    if (!connectionUri) {
-      console.log(`::error::NO_CONNECTION_URI for ${proj.name}: ${JSON.stringify(connRes.json)}`);
-      continue;
-    }
-
-    const counts = {};
-    for (const table of ['Subject', 'Unit', 'Topic', 'Resource']) {
-      counts[table] = await countRows(connectionUri, table);
-    }
-
-    results.push({ name: proj.name, id: proj.id, counts });
-    console.log(
-      `::notice::CONTENT ${proj.name}: Subject=${counts.Subject} Unit=${counts.Unit} Topic=${counts.Topic} Resource=${counts.Resource}`
-    );
-  }
-
-  console.log('::notice::SUMMARY: ' + JSON.stringify(results));
+  console.log(
+    `::notice::CONTENT ${projectName}: Subject=${counts.Subject} Unit=${counts.Unit} Topic=${counts.Topic} Resource=${counts.Resource}`
+  );
 }
 
 main().catch((e) => {

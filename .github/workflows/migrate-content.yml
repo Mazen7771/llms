@@ -1,0 +1,35 @@
+name: Migrate curriculum content to new database
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type YES to copy Subject/Unit/Topic/Resource/Recording/Quiz/Question/QuestionOption/UploadedFile/Setting from neon-bronze-saddle into the current NEW_DATABASE_URL'
+        required: true
+        default: 'no'
+
+jobs:
+  migrate:
+    if: github.event.inputs.confirm == 'YES'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Fetch bronze-saddle connection string
+        id: conn
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: |
+          URI=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+            "https://console.neon.tech/api/v2/projects/muddy-recipe-75778851/connection_uri?database_name=neondb&role_name=neondb_owner" \
+            | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).uri))")
+          echo "::add-mask::$URI"
+          echo "uri=$URI" >> "$GITHUB_OUTPUT"
+      - name: Run content migration
+        env:
+          OLD_DATABASE_URL: ${{ steps.conn.outputs.uri }}
+          NEW_DATABASE_URL: ${{ secrets.NEW_DATABASE_URL }}
+        run: node scripts/migrate-content.js

@@ -59,8 +59,9 @@ async function main() {
 
   console.log(`::notice::Recovering ${projectName} (${projectId})...`);
   const recoverRes = await neonApi('POST', `/projects/${projectId}/recover`);
-  if (recoverRes.status >= 200 && recoverRes.status < 300) {
-    console.log(`::notice::Recovered ${projectName}`);
+  const alreadyActive = recoverRes.json?.message === 'project is not deleted';
+  if ((recoverRes.status >= 200 && recoverRes.status < 300) || alreadyActive) {
+    console.log(alreadyActive ? `::notice::${projectName} was already active (not deleted)` : `::notice::Recovered ${projectName}`);
   } else {
     console.log(`::error::RECOVER_FAILED for ${projectName}: HTTP ${recoverRes.status} ${JSON.stringify(recoverRes.json)}`);
     return;

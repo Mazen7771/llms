@@ -11,7 +11,10 @@ export async function middleware(req: NextRequest) {
   const isTeacher = role === "TEACHER";
 
   // Public paths that don't require authentication
-  const publicPaths = ["/", "/login", "/login/student", "/login/teacher", "/api/auth", "/api/health"];
+  // NOTE: /api/env-check is temporarily public for production diagnosis
+  // (see its own file docstring) - remove it from this list once the
+  // database-connection issue is confirmed resolved.
+  const publicPaths = ["/", "/login", "/login/student", "/login/teacher", "/api/auth", "/api/health", "/api/env-check"];
 
   // Check if the path is public
   const isPublicPath = publicPaths.some(path =>

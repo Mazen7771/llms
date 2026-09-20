@@ -50,22 +50,36 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('::notice::Listing all projects...');
-  const allRes = await neonApi('GET', '/projects?limit=100');
-  const allProjects = allRes.json?.projects || [];
+  console.log('::notice::Checking organizations this API key can see...');
+  const orgsRes = await neonApi('GET', '/users/me/organizations');
+  const orgs = orgsRes.json?.organizations || [];
   console.log(
-    `::notice::ALL_PROJECTS: ${allProjects.map((p) => `${p.name}(${p.id})`).join(', ') || 'none'}`
+    `::notice::ORGS: ${orgs.map((o) => `${o.name}(${o.id})`).join(', ') || 'none'} (status ${orgsRes.status})`
   );
 
-  console.log('::notice::Listing recoverable (deleted) projects...');
-  const recRes = await neonApi('GET', '/projects?recoverable=true&limit=100');
-  const recoverable = recRes.json?.projects || [];
-  console.log(
-    `::notice::RECOVERABLE: ${recoverable.map((p) => `${p.name}(${p.id})`).join(', ') || 'none'}`
-  );
+  // Check personal account (no org_id) AND every organization found, since
+  // Vercel's Neon integration creates projects inside a separate
+  // "Vercel: <team>" organization rather than the personal account.
+  const scopesToCheck = [{ label: 'personal', orgId: null }, ...orgs.map((o) => ({ label: o.name, orgId: o.id }))];
+
+  let allProjects = [];
+  let recoverable = [];
+
+  for (const scope of scopesToCheck) {
+    const suffix = scope.orgId ? `&org_id=${scope.orgId}` : '';
+    const allRes = await neonApi('GET', `/projects?limit=100${suffix}`);
+    const projects = allRes.json?.projects || [];
+    console.log(`::notice::[${scope.label}] ALL_PROJECTS: ${projects.map((p) => `${p.name}(${p.id})`).join(', ') || 'none'} (status ${allRes.status})`);
+    allProjects = allProjects.concat(projects.map((p) => ({ ...p, _scope: scope.label, _orgId: scope.orgId })));
+
+    const recRes = await neonApi('GET', `/projects?recoverable=true&limit=100${suffix}`);
+    const recProjects = recRes.json?.projects || [];
+    console.log(`::notice::[${scope.label}] RECOVERABLE: ${recProjects.map((p) => `${p.name}(${p.id})`).join(', ') || 'none'} (status ${recRes.status})`);
+    recoverable = recoverable.concat(recProjects.map((p) => ({ ...p, _scope: scope.label, _orgId: scope.orgId })));
+  }
 
   if (recoverable.length === 0) {
-    console.log('::notice::Nothing to recover - all projects already active, or window expired.');
+    console.log('::notice::Nothing to recover in any scope checked.');
   }
 
   const results = [];

@@ -1,0 +1,28 @@
+name: Inspect old content database
+
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Fetch bronze-saddle connection string
+        id: conn
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: |
+          URI=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+            "https://console.neon.tech/api/v2/projects/muddy-recipe-75778851/connection_uri?database_name=neondb&role_name=neondb_owner" \
+            | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).uri))")
+          echo "::add-mask::$URI"
+          echo "uri=$URI" >> "$GITHUB_OUTPUT"
+      - name: Run inspection
+        env:
+          OLD_DATABASE_URL: ${{ steps.conn.outputs.uri }}
+        run: node scripts/inspect-old-content-db.js

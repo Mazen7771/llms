@@ -1,0 +1,20 @@
+name: Test large Drive file download
+on: workflow_dispatch
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download from Drive with virus-scan bypass
+        run: |
+          FILE_ID="1IPO9fobLDBYecEn7Yt7313XxEbw6eYlE"
+          curl -sc /tmp/cookies.txt "https://drive.google.com/uc?export=download&id=$FILE_ID" -o /tmp/page.html
+          CONFIRM=$(grep -o 'confirm=[a-zA-Z0-9_-]*' /tmp/page.html | head -1 | cut -d= -f2)
+          echo "Confirm token: $CONFIRM"
+          if [ -z "$CONFIRM" ]; then
+            CONFIRM="t"
+          fi
+          curl -Lb /tmp/cookies.txt "https://drive.google.com/uc?export=download&confirm=${CONFIRM}&id=${FILE_ID}" -o /tmp/downloaded.pdf
+          SIZE=$(stat -c%s /tmp/downloaded.pdf)
+          TYPE=$(file -b /tmp/downloaded.pdf)
+          echo "::notice::RESULT: size=$SIZE type=$TYPE"
+          head -c 200 /tmp/downloaded.pdf | head -1

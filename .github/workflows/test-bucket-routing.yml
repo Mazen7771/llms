@@ -1,0 +1,41 @@
+name: Test per-subject bucket routing
+on: workflow_dispatch
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          echo "test file for bucket routing check" > /tmp/test.txt
+
+          for PAIR in "CHEMISTRY:chemistry" "BIOLOGY:biology" "UNKNOWN_SUBJECT:new-files"; do
+            SUBJECT="${PAIR%%:*}"
+            EXPECTED_BUCKET="${PAIR##*:}"
+            PATH_IN_BUCKET="test/routing-check-${SUBJECT}.txt"
+
+            # Same signing call pattern as /api/upload/route.ts
+            SIGN_RESULT=$(curl -s -X POST \
+              "$SUPABASE_URL/storage/v1/object/upload/sign/$EXPECTED_BUCKET/$PATH_IN_BUCKET" \
+              -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{}')
+            TOKEN=$(echo "$SIGN_RESULT" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);const u=new URL('http://x'+j.url);console.log(u.searchParams.get('token')||'');}catch(e){console.log('');}})")
+
+            if [ -z "$TOKEN" ]; then
+              echo "::error::[$SUBJECT] SIGN_FAILED bucket=$EXPECTED_BUCKET result=$SIGN_RESULT"
+              continue
+            fi
+
+            UPLOAD_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
+              "$SUPABASE_URL/storage/v1/object/upload/sign/$EXPECTED_BUCKET/$PATH_IN_BUCKET?token=$TOKEN" \
+              -F "cacheControl=3600" \
+              -F "=@/tmp/test.txt")
+
+            VERIFY_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              "$SUPABASE_URL/storage/v1/object/public/$EXPECTED_BUCKET/$PATH_IN_BUCKET")
+
+            echo "::notice::[$SUBJECT] expected_bucket=$EXPECTED_BUCKET upload_http=$UPLOAD_CODE public_fetch_http=$VERIFY_CODE"
+          done

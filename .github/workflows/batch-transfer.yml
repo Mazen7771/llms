@@ -1,0 +1,72 @@
+name: Batch transfer Drive content to Supabase
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest:
+        description: 'Path to manifest JSON under scripts/manifests/'
+        required: true
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Transfer each file
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -e
+          MANIFEST="scripts/manifests/${{ inputs.manifest }}"
+          COUNT=$(node -e "console.log(require('./$MANIFEST').length)")
+          echo "Processing $COUNT files from $MANIFEST"
+          OK_LIST=""
+          FAIL_LIST=""
+
+          for i in $(seq 0 $(($COUNT - 1))); do
+            FILE_ID=$(node -e "console.log(require('./$MANIFEST')[$i].driveFileId)")
+            BUCKET_PATH=$(node -e "console.log(require('./$MANIFEST')[$i].bucketPath)")
+            FILENAME=$(node -e "console.log(require('./$MANIFEST')[$i].filename)")
+
+            echo "[$i] Downloading $FILENAME (Drive id $FILE_ID)..."
+            curl -sc /tmp/cookies.txt "https://drive.google.com/uc?export=download&id=$FILE_ID" -o /tmp/page.html
+            CONFIRM=$(grep -o 'confirm=[a-zA-Z0-9_-]*' /tmp/page.html | head -1 | cut -d= -f2)
+            if [ -z "$CONFIRM" ]; then CONFIRM="t"; fi
+            curl -sLb /tmp/cookies.txt "https://drive.google.com/uc?export=download&confirm=${CONFIRM}&id=${FILE_ID}" -o "/tmp/dl.pdf"
+
+            TYPE=$(file -b /tmp/dl.pdf)
+            SIZE=$(stat -c%s /tmp/dl.pdf)
+            case "$TYPE" in
+              PDF*) ;;
+              *)
+                echo "[$i] $FILENAME did not download as a PDF (got: $TYPE, size=$SIZE)"
+                FAIL_LIST="$FAIL_LIST $BUCKET_PATH(bad-download:$TYPE)"
+                continue
+                ;;
+            esac
+
+            echo "[$i] Uploading to $BUCKET_PATH ($SIZE bytes)..."
+            HTTP_CODE=$(curl -s -o /tmp/resp.json -w "%{http_code}" -X POST \
+              "$SUPABASE_URL/storage/v1/object/new-files/$BUCKET_PATH" \
+              -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "Content-Type: application/pdf" \
+              -H "x-upsert: true" \
+              --data-binary "@/tmp/dl.pdf")
+
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+              echo "[$i] OK $BUCKET_PATH size=$SIZE"
+              OK_LIST="$OK_LIST $BUCKET_PATH($SIZE)"
+            else
+              echo "[$i] FAILED $BUCKET_PATH (HTTP $HTTP_CODE): $(cat /tmp/resp.json)"
+              FAIL_LIST="$FAIL_LIST $BUCKET_PATH(HTTP-$HTTP_CODE)"
+            fi
+            rm -f /tmp/dl.pdf /tmp/page.html /tmp/cookies.txt
+          done
+
+          echo "::notice::OK_COUNT=$(echo $OK_LIST | wc -w) FAIL_COUNT=$(echo $FAIL_LIST | wc -w)"
+          echo "::notice::OK: $OK_LIST"
+          if [ -n "$FAIL_LIST" ]; then
+            echo "::error::FAILED: $FAIL_LIST"
+          fi

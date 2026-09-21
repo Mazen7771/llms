@@ -1,0 +1,18 @@
+name: Create subject-specific storage buckets
+on: workflow_dispatch
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          for BUCKET in chemistry biology; do
+            RESULT=$(curl -s -w "\nHTTP:%{http_code}" -X POST "$SUPABASE_URL/storage/v1/bucket" \
+              -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"name\":\"$BUCKET\",\"public\":true}")
+            echo "::notice::CREATE_$BUCKET: $RESULT"
+          done

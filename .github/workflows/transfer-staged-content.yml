@@ -1,0 +1,50 @@
+name: Transfer staged content to Supabase Storage
+
+on:
+  workflow_dispatch:
+    inputs:
+      subfolder:
+        description: 'Which subfolder under staging/ to transfer (e.g. chemistry-notes)'
+        required: true
+      bucket_prefix:
+        description: 'Destination path prefix in the new-files bucket (e.g. chemistry/notes)'
+        required: true
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: content-staging
+      - name: Upload each file to Supabase Storage
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUBFOLDER: ${{ inputs.subfolder }}
+          BUCKET_PREFIX: ${{ inputs.bucket_prefix }}
+        run: |
+          set -e
+          DIR="staging/$SUBFOLDER"
+          if [ ! -d "$DIR" ]; then
+            echo "::error::No such staging folder: $DIR"
+            exit 1
+          fi
+          for FILE in "$DIR"/*; do
+            NAME=$(basename "$FILE")
+            DEST="$BUCKET_PREFIX/$NAME"
+            echo "Uploading $FILE -> $DEST"
+            HTTP_CODE=$(curl -s -o /tmp/resp.json -w "%{http_code}" -X POST \
+              "$SUPABASE_URL/storage/v1/object/new-files/$DEST" \
+              -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "Content-Type: application/pdf" \
+              -H "x-upsert: true" \
+              --data-binary "@$FILE")
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+              echo "::notice::UPLOADED $DEST (HTTP $HTTP_CODE)"
+            else
+              echo "::error::FAILED $DEST (HTTP $HTTP_CODE): $(cat /tmp/resp.json)"
+              exit 1
+            fi
+          done

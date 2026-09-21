@@ -1,0 +1,16 @@
+name: Create correctly-named bucket
+on: workflow_dispatch
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          RESULT=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "$SUPABASE_URL/storage/v1/bucket" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"new-files","public":true}')
+          echo "::notice::CREATE_RESULT: $RESULT"

@@ -33,6 +33,7 @@ export async function GET() {
   const missing = required.filter((k) => !status[k]);
 
   const databaseHost = extractHost(process.env.DATABASE_URL);
+  const supabaseHost = extractHost(process.env.vv_SUPABASE_URL);
 
   let liveQuery: { ok: boolean; userCount?: number; adminExists?: boolean; error?: string } = { ok: false };
   try {
@@ -48,6 +49,7 @@ export async function GET() {
     missing: missing.length > 0 ? missing : undefined,
     status,
     databaseHost,
+    supabaseHost,
     liveQuery,
   });
 }

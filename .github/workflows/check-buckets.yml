@@ -8,7 +8,9 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          RESULT=$(curl -s "$SUPABASE_URL/storage/v1/bucket" \
+          RESULT=$(curl -s -X POST "$SUPABASE_URL/storage/v1/object/list/Name%3A%20new-files" \
             -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY")
-          echo "::notice::BUCKETS: $RESULT"
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"prefix":"","limit":100}')
+          echo "::notice::CONTENTS: $RESULT"

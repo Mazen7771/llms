@@ -1,0 +1,12 @@
+name: Verify public URL
+on: workflow_dispatch
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" "$SUPABASE_URL/storage/v1/object/public/new-files/chemistry/notes/chapter-05-chemical-energetics.pdf")
+          SIZE=$(curl -s -o /dev/null -w "%{size_download}" "$SUPABASE_URL/storage/v1/object/public/new-files/chemistry/notes/chapter-05-chemical-energetics.pdf")
+          echo "::notice::VERIFY: HTTP=$CODE SIZE=$SIZE"

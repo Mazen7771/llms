@@ -189,6 +189,19 @@ function SubjectForm({
 
 export default function AdminContentPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
+
+  const getSubjectNameForTopic = (
+    topicId: string
+  ): string | null => {
+    for (const subject of subjects) {
+      for (const unit of subject.Unit) {
+        if (unit.Topic.some((t) => t.id === topicId)) {
+          return subject.name;
+        }
+      }
+    }
+    return null;
+  };
   const [loading, setLoading] = useState(true);
   const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
   const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
@@ -832,6 +845,7 @@ export default function AdminContentPage() {
   // This does NOT use Vercel Blob.
   const uploadResourceFile = async (
     file: File,
+    subjectName: string | null,
     onProgress?: (progress: number) => void
   ): Promise<{
     fileKey: string;
@@ -866,6 +880,7 @@ export default function AdminContentPage() {
             file.type ||
             "application/octet-stream",
           fileSize: file.size,
+          subject: subjectName,
         }),
         cache: "no-store",
       }
@@ -1041,9 +1056,11 @@ export default function AdminContentPage() {
     setUploadProgress(0);
 
     try {
+      const subjectName = getSubjectNameForTopic(topicId);
       const fileInfo =
         await uploadResourceFile(
           newResource.file,
+          subjectName,
           (progress) =>
             setUploadProgress(progress)
         );

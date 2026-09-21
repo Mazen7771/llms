@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
-const SUPABASE_BUCKET = "new-files";
+const SUPABASE_BUCKET_DEFAULT = "new-files";
+const SUPABASE_BUCKET_BY_SUBJECT: Record<string, string> = {
+  CHEMISTRY: "chemistry",
+  BIOLOGY: "biology",
+};
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
 function requiredEnv(name: string): string {
@@ -63,6 +67,18 @@ export async function POST(request: NextRequest) {
       Number.isFinite(body.fileSize)
         ? body.fileSize
         : null;
+
+    // Which subject this upload belongs to determines which storage
+    // bucket it goes to. Falls back to the original shared bucket for
+    // anything that isn't Chemistry or Biology (or when the caller
+    // doesn't send it), so this stays backward-compatible.
+    const subjectInput =
+      typeof body.subject === "string"
+        ? body.subject.trim().toUpperCase()
+        : "";
+    const SUPABASE_BUCKET =
+      SUPABASE_BUCKET_BY_SUBJECT[subjectInput] ||
+      SUPABASE_BUCKET_DEFAULT;
 
     if (!fileName) {
       return NextResponse.json(

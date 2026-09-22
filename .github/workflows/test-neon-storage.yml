@@ -1,0 +1,17 @@
+name: Test Neon storage upload and public access
+on: workflow_dispatch
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "hello from neon storage test" > /tmp/hello.txt
+          UPLOAD_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
+            "https://br-icy-tree-awz49toc.storage.c-12.us-east-1.aws.neon.tech/biology/test/hello.txt?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=nak_live_8b72e7b8ee2749f78a6d98b25d0e8502%2F20260922%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260922T065529Z&X-Amz-Expires=900&X-Amz-Signature=b9ef3dcdfae0f065b8d02443200c0121261833858dd18c4deed290a4673f68ec&X-Amz-SignedHeaders=content-type%3Bhost" \
+            -H "Content-Type: text/plain" \
+            --data-binary "@/tmp/hello.txt")
+          echo "::notice::UPLOAD_HTTP=$UPLOAD_CODE"
+
+          PLAIN_CODE=$(curl -s -o /tmp/plain.txt -w "%{http_code}" "https://br-icy-tree-awz49toc.storage.c-12.us-east-1.aws.neon.tech/biology/test/hello.txt")
+          PLAIN_BODY=$(cat /tmp/plain.txt)
+          echo "::notice::PLAIN_GET_HTTP=$PLAIN_CODE BODY=$PLAIN_BODY"

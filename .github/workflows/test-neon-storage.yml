@@ -12,16 +12,16 @@ jobs:
           BUCKET="biology"
           KEY="test/endpoint-discovery.txt"
 
-          echo "--- Candidate 1: /storage/{bucket}/objects/{key}/presign ---"
-          curl -s -w "\nHTTP:%{http_code}\n" -X POST \
+          R1=$(curl -s -w "|||HTTP:%{http_code}" -X POST \
             "https://console.neon.tech/api/v2/projects/$PROJECT_ID/branches/$BRANCH_ID/storage/$BUCKET/objects/presign" \
             -H "Authorization: Bearer $NEON_API_KEY" \
             -H "Content-Type: application/json" \
-            -d "{\"object_key\":\"$KEY\",\"operation\":\"upload\",\"content_type\":\"text/plain\"}"
+            -d "{\"object_key\":\"$KEY\",\"operation\":\"upload\",\"content_type\":\"text/plain\"}" | tr '\n' ' ')
+          echo "::notice::CANDIDATE1: $R1"
 
-          echo "--- Candidate 2: /buckets/{bucket}/presign ---"
-          curl -s -w "\nHTTP:%{http_code}\n" -X POST \
+          R2=$(curl -s -w "|||HTTP:%{http_code}" -X POST \
             "https://console.neon.tech/api/v2/projects/$PROJECT_ID/branches/$BRANCH_ID/buckets/$BUCKET/presign" \
             -H "Authorization: Bearer $NEON_API_KEY" \
             -H "Content-Type: application/json" \
-            -d "{\"object_key\":\"$KEY\",\"operation\":\"upload\",\"content_type\":\"text/plain\"}"
+            -d "{\"object_key\":\"$KEY\",\"operation\":\"upload\",\"content_type\":\"text/plain\"}" | tr '\n' ' ')
+          echo "::notice::CANDIDATE2: $R2"

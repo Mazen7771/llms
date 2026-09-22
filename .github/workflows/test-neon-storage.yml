@@ -1,17 +1,21 @@
-name: Test Neon storage upload and public access
+name: Test Neon storage large file upload
 on: workflow_dispatch
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          echo "hello from neon storage test" > /tmp/hello.txt
-          UPLOAD_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
-            "https://br-icy-tree-awz49toc.storage.c-12.us-east-1.aws.neon.tech/biology/test/hello.txt?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=nak_live_8b72e7b8ee2749f78a6d98b25d0e8502%2F20260922%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260922T065529Z&X-Amz-Expires=900&X-Amz-Signature=b9ef3dcdfae0f065b8d02443200c0121261833858dd18c4deed290a4673f68ec&X-Amz-SignedHeaders=content-type%3Bhost" \
-            -H "Content-Type: text/plain" \
-            --data-binary "@/tmp/hello.txt")
-          echo "::notice::UPLOAD_HTTP=$UPLOAD_CODE"
+          echo "Generating 60MB test file..."
+          dd if=/dev/urandom of=/tmp/large.bin bs=1M count=60 2>&1 | tail -3
+          SIZE=$(stat -c%s /tmp/large.bin)
+          echo "Generated file size: $SIZE"
 
-          PLAIN_CODE=$(curl -s -o /tmp/plain.txt -w "%{http_code}" "https://br-icy-tree-awz49toc.storage.c-12.us-east-1.aws.neon.tech/biology/test/hello.txt")
-          PLAIN_BODY=$(cat /tmp/plain.txt)
-          echo "::notice::PLAIN_GET_HTTP=$PLAIN_CODE BODY=$PLAIN_BODY"
+          UPLOAD_CODE=$(curl -s -o /tmp/upload_resp.txt -w "%{http_code}" -X PUT \
+            "https://br-icy-tree-awz49toc.storage.c-12.us-east-1.aws.neon.tech/biology/test/large-60mb.bin?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=nak_live_db13245e0fa9436abe8f9709e3774d23%2F20260922%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260922T065639Z&X-Amz-Expires=900&X-Amz-Signature=91bdca053f9d051425a0317f753cd4fbf1168f44d3b3d3e63c425a4a8b2fa092&X-Amz-SignedHeaders=content-type%3Bhost" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@/tmp/large.bin")
+          echo "::notice::UPLOAD_60MB_HTTP=$UPLOAD_CODE RESP=$(cat /tmp/upload_resp.txt)"
+
+          DL_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://br-icy-tree-awz49toc.storage.c-12.us-east-1.aws.neon.tech/biology/test/large-60mb.bin")
+          DL_SIZE=$(curl -s -o /dev/null -w "%{size_download}" "https://br-icy-tree-awz49toc.storage.c-12.us-east-1.aws.neon.tech/biology/test/large-60mb.bin")
+          echo "::notice::DOWNLOAD_60MB_HTTP=$DL_CODE SIZE=$DL_SIZE EXPECTED=$SIZE"

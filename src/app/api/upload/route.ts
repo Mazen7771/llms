@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const SUPABASE_BUCKET_DEFAULT = "new-files";
 const SUPABASE_BUCKET_BY_SUBJECT: Record<string, string> = {
   CHEMISTRY: "chemistry",
-  BIOLOGY: "biology",
 };
+// Biology uploads go to Neon's S3-compatible branchable object storage
+// instead of Supabase, because Supabase's standard upload endpoint caps
+// individual files at 50MB and several Biology resources exceed that.
+const NEON_STORAGE_SUBJECTS = new Set(["BIOLOGY"]);
+const NEON_STORAGE_BUCKET = "biology";
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
 function requiredEnv(name: string): string {
@@ -69,16 +75,13 @@ export async function POST(request: NextRequest) {
         : null;
 
     // Which subject this upload belongs to determines which storage
-    // bucket it goes to. Falls back to the original shared bucket for
-    // anything that isn't Chemistry or Biology (or when the caller
-    // doesn't send it), so this stays backward-compatible.
+    // location it goes to. Falls back to the original shared Supabase
+    // bucket for anything that isn't Chemistry or Biology (or when the
+    // caller doesn't send it), so this stays backward-compatible.
     const subjectInput =
       typeof body.subject === "string"
         ? body.subject.trim().toUpperCase()
         : "";
-    const SUPABASE_BUCKET =
-      SUPABASE_BUCKET_BY_SUBJECT[subjectInput] ||
-      SUPABASE_BUCKET_DEFAULT;
 
     if (!fileName) {
       return NextResponse.json(
@@ -106,6 +109,58 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const safeFileName = sanitizeFileName(fileName);
+
+    // Unique path for every upload.
+    const filePath =
+      `resources/${crypto.randomUUID()}-${safeFileName}`;
+
+    if (NEON_STORAGE_SUBJECTS.has(subjectInput)) {
+      const endpoint = requiredEnv("NEON_STORAGE_ENDPOINT");
+      const region = requiredEnv("NEON_STORAGE_REGION");
+      const accessKeyId = requiredEnv(
+        "NEON_STORAGE_ACCESS_KEY_ID"
+      );
+      const secretAccessKey = requiredEnv(
+        "NEON_STORAGE_SECRET_ACCESS_KEY"
+      );
+
+      const s3Client = new S3Client({
+        endpoint,
+        region,
+        forcePathStyle: true,
+        credentials: { accessKeyId, secretAccessKey },
+      });
+
+      const command = new PutObjectCommand({
+        Bucket: NEON_STORAGE_BUCKET,
+        Key: filePath,
+        ContentType: contentType,
+      });
+
+      const signedUrl = await getSignedUrl(s3Client, command, {
+        expiresIn: 900,
+      });
+
+      const publicUrl = `${endpoint.replace(/\/+$/, "")}/${NEON_STORAGE_BUCKET}/${filePath}`;
+
+      return NextResponse.json({
+        success: true,
+        storage: "neon",
+        uploadMethod: "s3",
+        bucket: NEON_STORAGE_BUCKET,
+        path: filePath,
+        signedUrl,
+        publicUrl,
+        contentType,
+        fileName: safeFileName,
+      });
+    }
+
+    const SUPABASE_BUCKET =
+      SUPABASE_BUCKET_BY_SUBJECT[subjectInput] ||
+      SUPABASE_BUCKET_DEFAULT;
+
     const supabaseUrl = requiredEnv("vv_SUPABASE_URL");
 
     // Server-side only.
@@ -118,12 +173,6 @@ export async function POST(request: NextRequest) {
         "Missing vv_SUPABASE_SECRET_KEY or vv_SUPABASE_SERVICE_ROLE_KEY"
       );
     }
-
-    const safeFileName = sanitizeFileName(fileName);
-
-    // Unique path for every upload.
-    const filePath =
-      `resources/${crypto.randomUUID()}-${safeFileName}`;
 
     /*
      * Supabase Storage API:
@@ -218,6 +267,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       storage: "supabase",
+      uploadMethod: "supabase",
       bucket: SUPABASE_BUCKET,
       path: filePath,
       token,

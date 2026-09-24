@@ -901,10 +901,10 @@ export default function AdminContentPage() {
       !data?.signedUrl ||
       !data?.publicUrl ||
       !data?.path ||
-      !data?.token
+      (data?.uploadMethod === "supabase" && !data?.token)
     ) {
       throw new Error(
-        "Supabase returned an invalid upload response"
+        "Upload service returned an invalid response"
       );
     }
 
@@ -919,14 +919,26 @@ export default function AdminContentPage() {
           true
         );
 
-        if (SUPABASE_ANON_KEY) {
+        if (data.uploadMethod === "supabase") {
+          if (SUPABASE_ANON_KEY) {
+            xhr.setRequestHeader(
+              "apikey",
+              SUPABASE_ANON_KEY
+            );
+            xhr.setRequestHeader(
+              "Authorization",
+              `Bearer ${SUPABASE_ANON_KEY}`
+            );
+          }
+        } else {
+          // S3 (Neon) presigned PUT: auth is embedded in the signed
+          // URL's query string already; the only header it expects is
+          // Content-Type, matching what was signed server-side.
           xhr.setRequestHeader(
-            "apikey",
-            SUPABASE_ANON_KEY
-          );
-          xhr.setRequestHeader(
-            "Authorization",
-            `Bearer ${SUPABASE_ANON_KEY}`
+            "Content-Type",
+            data.contentType ||
+              file.type ||
+              "application/octet-stream"
           );
         }
 
@@ -1010,11 +1022,16 @@ export default function AdminContentPage() {
           }
         );
 
-        const formData = new FormData();
-        formData.append("cacheControl", "3600");
-        formData.append("", file);
-
-        xhr.send(formData);
+        if (data.uploadMethod === "supabase") {
+          const formData = new FormData();
+          formData.append("cacheControl", "3600");
+          formData.append("", file);
+          xhr.send(formData);
+        } else {
+          // S3 (Neon) presigned PUT expects the raw file bytes as the
+          // request body, not multipart form data.
+          xhr.send(file);
+        }
       }
     );
 

@@ -40,14 +40,20 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { subjectId, name, orderIndex } = body;
+    const { subjectId, name } = body;
 
     if (!subjectId || !name) {
       return NextResponse.json({ error: "Subject ID and name are required" }, { status: 400 });
     }
 
+    const maxOrder = await prisma.unit.aggregate({
+      where: { subjectId },
+      _max: { orderIndex: true },
+    });
+    const nextOrderIndex = (maxOrder._max.orderIndex ?? -1) + 1;
+
     const unit = await prisma.unit.create({
-      data: { id: crypto.randomUUID(), subjectId, name, orderIndex: orderIndex || 0, updatedAt: new Date() },
+      data: { id: crypto.randomUUID(), subjectId, name, orderIndex: nextOrderIndex, updatedAt: new Date() },
     });
 
     return NextResponse.json({ unit });

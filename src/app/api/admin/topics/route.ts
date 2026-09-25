@@ -39,14 +39,20 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { unitId, name, orderIndex } = body;
+    const { unitId, name } = body;
 
     if (!unitId || !name) {
       return NextResponse.json({ error: "Unit ID and name are required" }, { status: 400 });
     }
 
+    const maxOrder = await prisma.topic.aggregate({
+      where: { unitId },
+      _max: { orderIndex: true },
+    });
+    const nextOrderIndex = (maxOrder._max.orderIndex ?? -1) + 1;
+
     const topic = await prisma.topic.create({
-      data: { id: crypto.randomUUID(), unitId, name, orderIndex: orderIndex || 0, updatedAt: new Date() },
+      data: { id: crypto.randomUUID(), unitId, name, orderIndex: nextOrderIndex, updatedAt: new Date() },
     });
 
     return NextResponse.json({ topic });

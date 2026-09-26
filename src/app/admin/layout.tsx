@@ -52,7 +52,6 @@ const QuizIcon = ({ className = "" }) => (
 const MenuItems = [
   { href: "/admin", label: "Overview", icon: LayoutIcon },
   { href: "/admin/students", label: "Students", icon: UsersIcon },
-  { href: "/results", label: "Results", icon: TrophyIcon },
   { href: "/dashboard/search?type=resource", label: "Content Library", icon: BookIcon },
   { href: "/admin/quizzes", label: "Quizzes", icon: QuizIcon },
   { href: "/admin/settings", label: "Settings", icon: SettingsIcon },

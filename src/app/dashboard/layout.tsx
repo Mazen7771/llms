@@ -66,7 +66,6 @@ const MenuItems = [
   { href: "/dashboard", label: "Dashboard", icon: HomeIcon },
   { href: "/dashboard/search?type=resource", label: "Content Library", icon: BookIcon },
   { href: "/dashboard/search?type=quiz", label: "Quizzes", icon: SearchIcon },
-  { href: "/results", label: "Results", icon: TrophyIcon },
   { href: "/dashboard/notifications", label: "Notifications", icon: BellIcon },
   { href: "/dashboard/settings", label: "Settings", icon: SettingsIcon },
 ];
@@ -155,6 +154,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </header>
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10" id="main-content" role="main">
+        <div className="mb-6 rounded-xl border-2 border-primary/40 bg-primary/5 dark:bg-primary/10 px-4 py-3 text-sm sm:text-base font-medium text-gray-900 dark:text-white">
+          Online lessons :{" "}
+          <a
+            href="https://us04web.zoom.us/j/78533707256?pwd=ug7uPphbtdyoIb6TEUvBghWuaZCqq7.1"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline break-all"
+          >
+            https://us04web.zoom.us/j/78533707256?pwd=ug7uPphbtdyoIb6TEUvBghWuaZCqq7.1
+          </a>
+        </div>
         {children}
       </main>
     </div>

@@ -15,22 +15,14 @@
  * of the http(s) vs. opaque-key distinction, so it silently returns an
  * opaque key unresolved instead of routing it through /api/files.
  */
+/**
+ * Resolve a stored Resource.fileKey into a URL for STUDENT-facing viewing.
+ * Always routes through the authenticated /api/files proxy, even when
+ * fileKey is already a full storage URL (Supabase/Neon), so students never
+ * get a direct, unauthenticated, permanently-shareable link to the file -
+ * only a same-origin URL gated by the existing session/auth middleware,
+ * served inline (not as a download).
+ */
 export function resolveResourceUrl(fileKey: string): string {
-  if (fileKey.startsWith("http://") || fileKey.startsWith("https://")) {
-    return fileKey;
-  }
   return `/api/files/${encodeURIComponent(fileKey)}`;
-}
-
-export function resolveResourceDownloadUrl(fileKey: string): string {
-  if (fileKey.startsWith("http://") || fileKey.startsWith("https://")) {
-    try {
-      const url = new URL(fileKey);
-      url.searchParams.set("download", "");
-      return url.toString();
-    } catch {
-      return fileKey;
-    }
-  }
-  return `/api/files/${encodeURIComponent(fileKey)}?download=true`;
 }

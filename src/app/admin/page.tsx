@@ -84,14 +84,6 @@ const quickActions = [
     bg: "bg-success/10 dark:bg-success/20",
     ring: "focus-visible:ring-success",
   },
-  {
-    href: "/results",
-    icon: "🏆",
-    title: "Add Results",
-    description: "Upload and publish exam results for students to view",
-    bg: "bg-amber-500/10 dark:bg-amber-500/20",
-    ring: "focus-visible:ring-amber-500",
-  },
 ];
 
 const quickLinks = [
